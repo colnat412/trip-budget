@@ -1,0 +1,99 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { RegisterDto } from './dtos/auto.dto';
+import type { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { Public } from './decorators/public.decorator';
+
+@Controller('auth')
+export class AuthController {
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
+
+  @Public()
+  @Post('register')
+  async register(@Body() dto: RegisterDto) {
+    try {
+      return this.authService.register(dto);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('login')
+  async login(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const { accessToken, refreshToken } = await this.authService.login(dto);
+      this.setRefreshCookie(response, refreshToken);
+      return { accessToken };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Post('logout')
+  async logout(
+    @Req() request: any,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      await this.authService.logout(request.user.sub, request.user.sid);
+      response.clearCookie('refresh_token', {
+        path: '/api/auth',
+      });
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('refresh')
+  async refresh(
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const refreshToken = request.cookies?.refresh_token;
+
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token is missing');
+    }
+
+    const result = await this.authService.refresh(refreshToken);
+
+    this.setRefreshCookie(response, result.refreshToken);
+
+    return { accessToken: result.accessToken };
+  }
+
+  // @Public()
+  @Get('test')
+  async get() {
+    return 'GET TEST GUARD';
+  }
+
+  private setRefreshCookie(response: Response, refreshToken: string) {
+    response.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure: this.config.get<string>('COOKIE_SECURE') === 'true',
+      sameSite: 'lax',
+      path: '/api/auth',
+      maxAge:
+        Number(this.config.getOrThrow<string>('REFRESH_TOKEN_TTL_SECONDS')) *
+        1000,
+    });
+  }
+}
