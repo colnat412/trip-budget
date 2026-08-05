@@ -1,14 +1,29 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/trip_budget?currentSchema=trip_core
-    username: postgres
-    password: root
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
   jpa:
     hibernate:
       ddl-auto: validate
     properties:
       hibernate:
-        default_schema: travel
+        default_schema: trip_core
     open-in-view: false
+
+security:
+  jwt:
+    secret: ${JWT_ACCESS_SECRET}
+
+server:
+  port: 8081

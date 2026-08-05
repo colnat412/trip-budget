@@ -9,19 +9,5 @@ import java.util.List;
 import java.util.Optional;
 
 public interface TripRepository extends JpaRepository<TripEntity, Long> {
-    Optional<TripMemberEntity> findByTrip_IdAndUserId(
-            Long tripId,
-            Long userId
-    );
 
-    boolean existsByTrip_IdAndUserIdAndStatus(
-            Long tripId,
-            Long userId,
-            TripMemberStatus status
-    );
-
-    List<TripMemberEntity> findAllByTrip_IdAndStatus(
-            Long tripId,
-            TripMemberStatus status
-    );
 }

@@ -205,6 +205,11 @@ export class AuthService {
     ttlSeconds: number,
   ) {
     const userSessionsKey = this.getUserSessionsKey(session.userId);
+    console.log(
+      'userSessionsKey',
+      userSessionsKey,
+      this.getSessionKey(sessionId),
+    );
 
     await this.redis.redisClient
       .multi()
