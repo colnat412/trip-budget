@@ -25,5 +25,8 @@ security:
   jwt:
     secret: ${JWT_ACCESS_SECRET}
 
+
 server:
+  servlet:
+    context-path: ${API_BASE_PATH:/api}
   port: 8081

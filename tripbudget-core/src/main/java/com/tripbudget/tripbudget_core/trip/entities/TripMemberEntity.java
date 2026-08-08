@@ -50,4 +50,57 @@ public class TripMemberEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    public static TripMemberEntity createOwner(TripEntity trip, Long userId) {
+        TripMemberEntity member = new TripMemberEntity();
+
+        member.trip = trip;
+        member.userId = userId;
+        member.role = TripMemberRole.OWNER;
+        member.status = TripMemberStatus.ACTIVE;
+
+        return member;
+    }
+
+    public static TripMemberEntity invite(
+            TripEntity trip,
+            Long userId,
+            TripMemberRole role
+    ) {
+        if (role == TripMemberRole.OWNER) {
+            throw new IllegalArgumentException(
+                "Inviting member cannot have OWNER role"
+            );
+        }
+
+        TripMemberEntity member = new TripMemberEntity();
+        member.trip = trip;
+        member.userId = userId;
+        member.role = role;
+        member.status = TripMemberStatus.INVITED;
+
+        return member;
+    }
+
+    @PrePersist
+    private void prePersist() {
+        Instant now = Instant.now();
+
+        if (joinedAt == null) {
+            joinedAt = now;
+        }
+
+        if (createdAt == null) {
+            createdAt = now;
+        }
+
+        if (updatedAt == null) {
+            updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    private void preUpdate() {
+        updatedAt = Instant.now();
+    }
 }

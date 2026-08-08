@@ -2,11 +2,13 @@ package com.tripbudget.tripbudget_core.trip.entities;
 
 import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Locale;
 
 @Getter
 @Entity
@@ -14,7 +16,7 @@ import java.time.LocalDate;
         schema = "trip_core",
         name = "trips"
 )
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // set to service only use .create(...) cannot use new TripEntity();
 public class TripEntity {
 
     @Id
@@ -55,4 +57,59 @@ public class TripEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    // default set value to create trip, prevent set incorrectly value
+    public static TripEntity create(
+            Long ownerId,
+            String name,
+            String destination,
+            String description,
+            LocalDate startDate,
+            LocalDate endDate,
+            String baseCurrency
+    ) {
+        TripEntity trip = new TripEntity();
+
+        trip.ownerId = ownerId;
+        trip.name = name.trim();
+        trip.destination = trimToNull(destination);
+        trip.description = trimToNull(description);
+        trip.startDate = startDate;
+        trip.endDate = endDate;
+
+        trip.baseCurrency = baseCurrency == null
+                ? "VND"
+                : baseCurrency.toUpperCase(Locale.ROOT);
+
+        // always DRAFT when create trip
+        trip.status = TripStatus.DRAFT;
+
+        return trip;
+    }
+
+    @PrePersist
+    private void beforeInsert() {
+        Instant now = Instant.now();
+
+        if (this.createdAt == null) {
+            this.createdAt = now;
+        }
+
+        if (this.updatedAt == null) {
+            this.updatedAt = now;
+        }
+    }
+
+    @PreUpdate
+    private void preUpdate() {
+        updatedAt = Instant.now();
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
+    }
 }
