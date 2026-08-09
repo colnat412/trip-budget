@@ -1,13 +1,18 @@
 package com.tripbudget.tripbudget_core.trip.services;
 
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.InitialMemberRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
+import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,6 +89,23 @@ public class TripService {
             tripMemberRepository.saveAll(invitations);
 
             return TripResponse.from(savedTrip);
+    }
+
+    public PageResponse<TripResponse> getMyTrips(
+            Long currentUserId,
+            int page,
+            int size
+    ) {
+        Page<TripEntity> tripPage =
+                tripRepository.findAllActiveTripsByUserId(
+                        currentUserId,
+                        TripMemberStatus.ACTIVE,
+                        PageRequest.of(page, size)
+                );
+
+        Page<TripResponse> responsePage = tripPage.map(TripResponse::from);
+
+        return PageResponse.from(responsePage);
     }
 
     private void validateCreateRequest(CreateTripRequest request) {

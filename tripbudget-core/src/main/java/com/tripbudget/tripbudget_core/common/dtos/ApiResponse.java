@@ -21,14 +21,22 @@ public record ApiResponse<T>(
         );
     }
 
-    public static ApiResponse<Void> error(
+    public static <T> ApiResponse<T> failure(
             HttpStatus status,
-            String message
+            String message,
+            T data
     ) {
         return new ApiResponse<>(
                 status.value(),
                 message,
-                null
+                data
         );
+    }
+
+    public static ApiResponse<Void> error(
+            HttpStatus status,
+            String message
+    ) {
+       return failure(status, message, null);
     }
 }
