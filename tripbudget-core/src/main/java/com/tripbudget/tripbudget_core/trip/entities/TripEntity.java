@@ -87,6 +87,45 @@ public class TripEntity {
         return trip;
     }
 
+    public void update(
+            String name,
+            String description,
+            String destination,
+            LocalDate startDate,
+            LocalDate endDate,
+            String baseCurrency
+    ) {
+        if (name != null) {
+            this.name = name.trim();
+        }
+
+        if (description != null) {
+            this.description = description;
+        }
+
+        if (destination != null) {
+            this.destination = destination;
+        }
+
+        if (startDate != null) {
+            this.startDate = startDate;
+        }
+
+        if (endDate != null) {
+            this.endDate = endDate;
+        }
+
+        if (baseCurrency != null) {
+            this.baseCurrency = baseCurrency
+                    .trim()
+                    .toUpperCase(Locale.ROOT);
+        }
+    }
+
+    public void deleteTrip() {
+        this.status = TripStatus.DELETED;
+    }
+
     @PrePersist
     private void beforeInsert() {
         Instant now = Instant.now();

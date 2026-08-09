@@ -20,6 +20,7 @@ public interface TripRepository extends JpaRepository<TripEntity, Long> {
                 ON tripMember.trip = trip
             WHERE tripMember.userId = :currentUserId
               AND tripMember.status = :memberStatus
+              AND trip.status != TripStatus.DELETED
             ORDER BY trip.id DESC
             """,
             countQuery = """
@@ -29,6 +30,7 @@ public interface TripRepository extends JpaRepository<TripEntity, Long> {
                 ON tripMember.trip = trip
             WHERE tripMember.userId = :currentUserId
               AND tripMember.status = :memberStatus
+              AND trip.status != TripStatus.DELETED
             """
     )
     Page<TripEntity> findAllActiveTripsByUserId(
@@ -36,4 +38,13 @@ public interface TripRepository extends JpaRepository<TripEntity, Long> {
             @Param("memberStatus") TripMemberStatus memberStatus,
             Pageable pageable
     );
+
+    @Query("""
+        SELECT trip
+        FROM TripEntity trip
+        WHERE trip.id = :tripId
+          AND trip.status != TripStatus.DELETED
+    """
+    )
+    TripEntity findActiveTrip(@Param("tripId") Long tripId);
 }

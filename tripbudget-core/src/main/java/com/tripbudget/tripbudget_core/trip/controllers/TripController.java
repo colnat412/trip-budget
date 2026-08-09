@@ -3,6 +3,7 @@ package com.tripbudget.tripbudget_core.trip.controllers;
 import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
@@ -23,7 +24,7 @@ import java.util.List;
 import java.util.Objects;
 
 @RestController()
-@RequestMapping("/trips")
+@RequestMapping("/trip")
 @RequiredArgsConstructor
 @Validated
 public class TripController {
@@ -46,7 +47,7 @@ public class TripController {
                 );
     }
 
-    @GetMapping
+    @GetMapping("/my-trips")
     public ResponseEntity<ApiResponse<PageResponse<TripResponse>>> getMyTrips(
             @AuthenticationPrincipal Jwt jwt,
 
@@ -72,6 +73,58 @@ public class TripController {
                         HttpStatus.OK,
                         "Trips retrieved successfully",
                         response
+                )
+        );
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") Long tripId, @AuthenticationPrincipal Jwt jwt) {
+        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+
+        TripResponse response = tripService.getTripById(tripId, currentUserId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        HttpStatus.OK,
+                        "Get trip successfully",
+                        response
+                )
+        );
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<TripResponse>> update(
+            @PathVariable("id") Long tripId,
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody()UpdateTripRequest body
+    ){
+        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        TripResponse response = tripService.update(currentUserId, tripId, body);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        HttpStatus.OK,
+                        "Update trip successfully",
+                        response
+                )
+        );
+    }
+
+    @PutMapping("/delete/{id}")
+    public ResponseEntity<ApiResponse<TripResponse>> deleteTrip(
+            @PathVariable("id") Long tripId,
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody()UpdateTripRequest body
+    ){
+        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+
+        tripService.deleteTrip(currentUserId, tripId);
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        HttpStatus.OK,
+                        "Delete trip successfully",
+                        null
                 )
         );
     }

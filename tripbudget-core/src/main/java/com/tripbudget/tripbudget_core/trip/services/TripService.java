@@ -3,6 +3,7 @@ package com.tripbudget.tripbudget_core.trip.services;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.InitialMemberRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
@@ -106,6 +107,80 @@ public class TripService {
         Page<TripResponse> responsePage = tripPage.map(TripResponse::from);
 
         return PageResponse.from(responsePage);
+    }
+
+    public TripResponse getTripById(Long tripId, Long currentUserId)
+    {
+        TripEntity trip = this.getActiveMemberTrip(tripId, currentUserId);
+        return TripResponse.from(trip);
+    }
+
+    @Transactional
+    public TripResponse update(Long currentUserId, Long tripId, UpdateTripRequest dto)
+    {
+        TripEntity trip = this.getActiveMemberTrip(tripId, currentUserId);
+
+        if(dto.getEndDate() != null && dto.getStartDate() != null && dto.getEndDate().isBefore(dto.getStartDate()))
+        {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "End date must be on or after start date"
+            );
+        }
+
+        trip.update(
+                dto.getName(),
+                dto.getDescription(),
+                dto.getDestination(),
+                dto.getStartDate(),
+                dto.getEndDate(),
+                dto.getBaseCurrency()
+        );
+
+        return TripResponse.from(trip);
+    }
+
+    @Transactional
+    public void deleteTrip(
+            Long currentUserId,
+            Long tripId
+    ) {
+        TripEntity trip = getActiveMemberTrip(
+                tripId,
+                currentUserId
+        );
+        trip.deleteTrip();
+//        tripRepository.delete(trip);
+    }
+
+    private TripEntity getActiveMemberTrip(
+            Long tripId,
+            Long currentUserId
+    ) {
+        TripEntity trip = tripRepository.findActiveTrip(tripId);
+
+        if(trip == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Trip not found"
+            );
+        }
+
+        boolean isActiveMember =
+                tripMemberRepository.existsByTrip_IdAndUserIdAndStatus(
+                        tripId,
+                        currentUserId,
+                        TripMemberStatus.ACTIVE
+                );
+
+        if (!isActiveMember) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "You do not have access to this trip"
+            );
+        }
+
+        return trip;
     }
 
     private void validateCreateRequest(CreateTripRequest request) {
