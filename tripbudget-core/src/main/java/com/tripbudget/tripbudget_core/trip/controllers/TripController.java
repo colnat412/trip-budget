@@ -1,6 +1,8 @@
 package com.tripbudget.tripbudget_core.trip.controllers;
 
+import com.tripbudget.tripbudget_core.common.annotations.CurrentUser;
 import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
+import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
@@ -31,9 +33,9 @@ public class TripController {
     private final TripService tripService;
 
     @PostMapping("/create")
-    public ResponseEntity<ApiResponse<TripResponse>> createTrip(@Valid @RequestBody() CreateTripRequest createTripRequest, @AuthenticationPrincipal Jwt jwt) {
-        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
-
+    public ResponseEntity<ApiResponse<TripResponse>> createTrip(@Valid @RequestBody() CreateTripRequest createTripRequest, @CurrentUser CurrentUserDto user) {
+        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        Long currentUserId = user.id();
         TripResponse response = tripService.createTrip(currentUserId, createTripRequest);
 
         return ResponseEntity
@@ -49,7 +51,7 @@ public class TripController {
 
     @GetMapping("/my-trips")
     public ResponseEntity<ApiResponse<PageResponse<TripResponse>>> getMyTrips(
-            @AuthenticationPrincipal Jwt jwt,
+            @CurrentUser CurrentUserDto user,
 
             @RequestParam(defaultValue = "0")
             @Min(value = 0, message = "Page must be greater than or equal to 0")
@@ -60,7 +62,9 @@ public class TripController {
             @Max(value = 100, message = "Size must not exceed 100")
             int size
     ) {
-        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        Long currentUserId = user.id();
+        System.out.println("Current " + currentUserId);
 
         PageResponse<TripResponse> response = tripService.getMyTrips(
                 currentUserId,
@@ -78,8 +82,9 @@ public class TripController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") Long tripId, @AuthenticationPrincipal Jwt jwt) {
-        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+    public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") Long tripId, @CurrentUser CurrentUserDto user) {
+        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        Long currentUserId = user.id();
 
         TripResponse response = tripService.getTripById(tripId, currentUserId);
 
@@ -95,10 +100,11 @@ public class TripController {
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<TripResponse>> update(
             @PathVariable("id") Long tripId,
-            @AuthenticationPrincipal Jwt jwt,
+            @CurrentUser CurrentUserDto user,
             @Valid @RequestBody()UpdateTripRequest body
     ){
-        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        Long currentUserId = user.id();
         TripResponse response = tripService.update(currentUserId, tripId, body);
 
         return ResponseEntity.ok(
@@ -113,10 +119,11 @@ public class TripController {
     @PutMapping("/delete/{id}")
     public ResponseEntity<ApiResponse<TripResponse>> deleteTrip(
             @PathVariable("id") Long tripId,
-            @AuthenticationPrincipal Jwt jwt,
+            @CurrentUser CurrentUserDto user,
             @Valid @RequestBody()UpdateTripRequest body
     ){
-        Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
+        Long currentUserId = user.id();
 
         tripService.deleteTrip(currentUserId, tripId);
 
