@@ -24,12 +24,20 @@ import java.nio.charset.StandardCharsets;
 public class SecurityConfig {
 
     private final RedisSessionValidationFilter redisSessionValidationFilter;
+    private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+    private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
     @Value("${security.jwt.secret}")
     private String jwtSecret;
 
-    public SecurityConfig(RedisSessionValidationFilter redisSessionValidationFilter) {
+     public SecurityConfig(
+            RedisSessionValidationFilter redisSessionValidationFilter,
+            CustomAuthenticationEntryPoint authenticationEntryPoint,
+            CustomAccessDeniedHandler accessDeniedHandler
+    ) {
         this.redisSessionValidationFilter = redisSessionValidationFilter;
+        this.customAuthenticationEntryPoint = authenticationEntryPoint;
+        this.customAccessDeniedHandler = accessDeniedHandler;
     }
 
     // any requests have to go here
@@ -49,9 +57,15 @@ public class SecurityConfig {
 //                        .requestMatchers("/api/public/**").permitAll() // this is public endpoint api
                         .anyRequest().authenticated()
                 )
-                // Verify JWT token to header.payload.signature
+                // Regis to verify JWT token to header.payload.signature
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(customAuthenticationEntryPoint)
+                        .accessDeniedHandler(customAccessDeniedHandler)
+                )
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(customAuthenticationEntryPoint)
+                        .accessDeniedHandler(customAccessDeniedHandler)
                 )
                 // verify session redis
                 .addFilterAfter(

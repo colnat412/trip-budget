@@ -6,15 +6,21 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+
+import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class RedisSessionValidationFilter extends OncePerRequestFilter {
@@ -47,7 +53,7 @@ public class RedisSessionValidationFilter extends OncePerRequestFilter {
             String tokenType = jwtAuth.getToken().getClaimAsString("type");
 
             if (!"access".equals(tokenType) || sessionId == null) {
-                reject(response);
+                reject(response, "Unauthorized");
                 return;
             }
 
@@ -56,7 +62,7 @@ public class RedisSessionValidationFilter extends OncePerRequestFilter {
                     .get("auth:session:" + sessionId);
 
             if (sessionRaw == null) {
-                reject(response);
+                reject(response, "Unauthorized");
                 return;
             }
 
@@ -77,12 +83,17 @@ public class RedisSessionValidationFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 
-    private void reject(HttpServletResponse response) throws IOException {
+    private void reject(HttpServletResponse response, String message) throws IOException {
         SecurityContextHolder.clearContext();
 
-        response.sendError(
-                HttpServletResponse.SC_UNAUTHORIZED,
-                "Session expired or revoked"
-        );
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
+        ApiResponse<Void> apiRes = ApiResponse.error(
+            HttpStatus.UNAUTHORIZED, 
+            message != null ? message : "Unauthorized");
+
+        response.getWriter().write(objectMapper.writeValueAsString(apiRes));
     }
 }

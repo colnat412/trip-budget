@@ -1,7 +1,8 @@
 spring:
   config:
-    import: optional:file:.env[.properties]
-
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../.env[.properties]
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
@@ -24,7 +25,6 @@ spring:
 security:
   jwt:
     secret: ${JWT_ACCESS_SECRET}
-
 
 server:
   servlet:
