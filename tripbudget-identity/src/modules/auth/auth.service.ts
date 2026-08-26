@@ -54,13 +54,13 @@ export class AuthService {
       const user = await this.usersService.findByCondition({ email });
 
       if (!user) {
-        throw new UnauthorizedException('Invalid credentials');
+        throw new UnauthorizedException('Email or password is not valid');
       }
 
       const passwordMatched = await bcrypt.compare(dto.password, user.password);
 
       if (!passwordMatched) {
-        throw new UnauthorizedException('Invalid credentials');
+        throw new UnauthorizedException('Email or password is not valid');
       }
 
       if (user.status !== UserStatusEnum.ACTIVE) {
@@ -69,7 +69,7 @@ export class AuthService {
 
       return this.createSession(user.id);
     } catch (error) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Email or password is not valid');
     }
   }
 
