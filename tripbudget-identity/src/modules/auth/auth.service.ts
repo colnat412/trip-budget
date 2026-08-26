@@ -67,10 +67,37 @@ export class AuthService {
         throw new UnauthorizedException('Account is not active');
       }
 
-      return this.createSession(user.id);
+      const session = await this.createSession(user.id);
+
+      return {
+        ...session,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+        },
+      };
     } catch (error) {
       throw new UnauthorizedException('Email or password is not valid');
     }
+  }
+
+  async getProfile(userId: string | number) {
+    const user = await this.usersService.findByCondition({
+      id: Number(userId),
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+    };
   }
 
   async logout(userId: string, sessionId: string) {

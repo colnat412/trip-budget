@@ -26,6 +26,7 @@ export class AuthController {
     try {
       return this.authService.register(dto);
     } catch (error) {
+      console.log('Error', error);
       throw error;
     }
   }
@@ -37,10 +38,22 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     try {
-      const { accessToken, refreshToken } = await this.authService.login(dto);
+      const { accessToken, refreshToken, user } =
+        await this.authService.login(dto);
       this.setRefreshCookie(response, refreshToken);
-      return { accessToken };
+      return { accessToken, user };
     } catch (error) {
+      console.log('Error', error);
+      throw error;
+    }
+  }
+
+  @Get('me')
+  async getMe(@Req() request: any) {
+    try {
+      return await this.authService.getProfile(request.user.sub);
+    } catch (error) {
+      console.log('Error', error);
       throw error;
     }
   }
@@ -56,6 +69,7 @@ export class AuthController {
         path: '/api/auth',
       });
     } catch (error) {
+      console.log('Error', error);
       throw error;
     }
   }
