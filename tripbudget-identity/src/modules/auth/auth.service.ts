@@ -14,7 +14,7 @@ import { JwtService } from '@nestjs/jwt';
 
 @Injectable()
 export class AuthService {
-  private readonly refreshTtlSeconds = 60 * 60 * 24 * 15; // 15 days
+  private readonly refreshTtlSeconds = 60 * 60 * 24 * 30; // 30 days
   constructor(
     private readonly usersService: UsersService,
     private readonly config: ConfigService,
