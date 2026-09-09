@@ -1,5 +1,6 @@
 package com.tripbudget.tripbudget_core.trip.entities;
 
+import com.tripbudget.tripbudget_core.common.entities.BaseEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import jakarta.persistence.*;
@@ -21,11 +22,7 @@ import java.time.Instant;
         }
 )
 @NoArgsConstructor
-public class TripMemberEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class TripMemberEntity extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "trip_id", nullable = false)
@@ -44,12 +41,6 @@ public class TripMemberEntity {
 
     @Column(name = "joined_at", nullable = false)
     private Instant joinedAt;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 
     public static TripMemberEntity createOwner(TripEntity trip, Long userId) {
         TripMemberEntity member = new TripMemberEntity();
@@ -83,24 +74,9 @@ public class TripMemberEntity {
     }
 
     @PrePersist
-    private void prePersist() {
-        Instant now = Instant.now();
-
+    private void prePersistMember() {
         if (joinedAt == null) {
-            joinedAt = now;
+            joinedAt = Instant.now();
         }
-
-        if (createdAt == null) {
-            createdAt = now;
-        }
-
-        if (updatedAt == null) {
-            updatedAt = now;
-        }
-    }
-
-    @PreUpdate
-    private void preUpdate() {
-        updatedAt = Instant.now();
     }
 }

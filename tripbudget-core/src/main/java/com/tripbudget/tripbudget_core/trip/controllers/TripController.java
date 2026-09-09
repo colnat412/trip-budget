@@ -17,13 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Objects;
 
 @RestController()
 @RequestMapping("/trip")
@@ -34,7 +29,6 @@ public class TripController {
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<TripResponse>> createTrip(@Valid @RequestBody() CreateTripRequest createTripRequest, @CurrentUser CurrentUserDto user) {
-        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
         Long currentUserId = user.id();
         TripResponse response = tripService.createTrip(currentUserId, createTripRequest);
 
@@ -62,9 +56,7 @@ public class TripController {
             @Max(value = 100, message = "Size must not exceed 100")
             int size
     ) {
-        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
         Long currentUserId = user.id();
-        System.out.println("Current " + currentUserId);
 
         PageResponse<TripResponse> response = tripService.getMyTrips(
                 currentUserId,
@@ -83,7 +75,6 @@ public class TripController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") Long tripId, @CurrentUser CurrentUserDto user) {
-        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
         Long currentUserId = user.id();
 
         TripResponse response = tripService.getTripById(tripId, currentUserId);
@@ -103,7 +94,6 @@ public class TripController {
             @CurrentUser CurrentUserDto user,
             @Valid @RequestBody()UpdateTripRequest body
     ){
-        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
         Long currentUserId = user.id();
         TripResponse response = tripService.update(currentUserId, tripId, body);
 
@@ -122,7 +112,6 @@ public class TripController {
             @CurrentUser CurrentUserDto user,
             @Valid @RequestBody()UpdateTripRequest body
     ){
-        // Long currentUserId = Long.parseLong(Objects.requireNonNull(jwt.getSubject()));
         Long currentUserId = user.id();
 
         tripService.deleteTrip(currentUserId, tripId);

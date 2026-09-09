@@ -1,5 +1,6 @@
 package com.tripbudget.tripbudget_core.trip.entities;
 
+import com.tripbudget.tripbudget_core.common.entities.BaseEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -17,11 +18,7 @@ import java.util.Locale;
         name = "trips"
 )
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // set to service only use .create(...) cannot use new TripEntity();
-public class TripEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class TripEntity extends BaseEntity {
 
     @Column(name = "owner_id", nullable = false)
     private Long ownerId;
@@ -51,12 +48,6 @@ public class TripEntity {
     @Version
     @Column(nullable = false)
     private Long version;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private Instant createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
 
     // default set value to create trip, prevent set incorrectly value
     public static TripEntity create(
@@ -124,24 +115,7 @@ public class TripEntity {
 
     public void deleteTrip() {
         this.status = TripStatus.DELETED;
-    }
-
-    @PrePersist
-    private void beforeInsert() {
-        Instant now = Instant.now();
-
-        if (this.createdAt == null) {
-            this.createdAt = now;
-        }
-
-        if (this.updatedAt == null) {
-            this.updatedAt = now;
-        }
-    }
-
-    @PreUpdate
-    private void preUpdate() {
-        updatedAt = Instant.now();
+        this.markDeleted();
     }
 
     private static String trimToNull(String value) {
