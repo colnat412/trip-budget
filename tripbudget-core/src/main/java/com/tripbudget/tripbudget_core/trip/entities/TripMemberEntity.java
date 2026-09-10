@@ -73,6 +73,60 @@ public class TripMemberEntity extends BaseEntity {
         return member;
     }
 
+    public static TripMemberEntity addDirectMember(TripEntity trip, Long userId, TripMemberRole role) {
+        if (role == TripMemberRole.OWNER) {
+            throw new IllegalArgumentException("Directly added member cannot have OWNER role");
+        }
+
+        TripMemberEntity member = new TripMemberEntity();
+        member.trip = trip;
+        member.userId = userId;
+        member.role = role;
+        member.status = TripMemberStatus.ACTIVE;
+        member.joinedAt = Instant.now();
+
+        return member;
+    }
+
+    public void updateRole(TripMemberRole newRole) {
+        if (newRole == null) {
+            throw new IllegalArgumentException("Role cannot be null");
+        }
+        if (newRole == TripMemberRole.OWNER) {
+            throw new IllegalArgumentException("Cannot change member role to OWNER directly");
+        }
+        this.role = newRole;
+    }
+
+    public void updateStatus(TripMemberStatus newStatus) {
+        if (newStatus == null) {
+            throw new IllegalArgumentException("Status cannot be null");
+        }
+        this.status = newStatus;
+        if (newStatus == TripMemberStatus.ACTIVE && this.joinedAt == null) {
+            this.joinedAt = Instant.now();
+        }
+    }
+
+    public void remove() {
+        this.status = TripMemberStatus.REMOVED;
+        this.markDeleted();
+    }
+
+    public void leave() {
+        this.status = TripMemberStatus.LEFT;
+        this.markDeleted();
+    }
+
+    public void reactivate(TripMemberRole newRole, TripMemberStatus newStatus) {
+        this.role = newRole;
+        this.status = newStatus;
+        this.restore();
+        if (newStatus == TripMemberStatus.ACTIVE) {
+            this.joinedAt = Instant.now();
+        }
+    }
+
     @PrePersist
     private void prePersistMember() {
         if (joinedAt == null) {

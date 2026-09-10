@@ -17,6 +17,8 @@ import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
+import com.tripbudget.tripbudget_core.user.entities.UserEntity;
+import com.tripbudget.tripbudget_core.user.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -38,6 +40,7 @@ public class ExpenseService {
     private final ExpenseRepository expenseRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final UserRepository userRepository;
 
     @Transactional
     public ExpenseResponse createExpense(Long currentUserId, Long tripId, CreateExpenseRequest req) {
@@ -85,8 +88,10 @@ public class ExpenseService {
                         pageable
                 );
 
-        List<ExpenseResponse> items = expensePage.getContent().stream()
-                .map(this::mapToResponse)
+        List<ExpenseEntity> content = expensePage.getContent();
+        Map<Long, UserEntity> userMap = getUserMapForExpenses(content);
+        List<ExpenseResponse> items = content.stream()
+                .map(e -> mapToResponse(e, userMap))
                 .toList();
 
         PageResponse.Pagination pagination = new PageResponse.Pagination(
@@ -342,22 +347,64 @@ public class ExpenseService {
         }
     }
 
-    private ExpenseResponse mapToResponse(ExpenseEntity entity) {
+    private Map<Long, UserEntity> getUserMapForExpenses(List<ExpenseEntity> expenses) {
+        if (expenses == null || expenses.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Set<Long> userIds = new HashSet<>();
+        for (ExpenseEntity exp : expenses) {
+            if (exp.getPayerId() != null) {
+                userIds.add(exp.getPayerId());
+            }
+            if (exp.getSplits() != null) {
+                for (ExpenseSplitEntity s : exp.getSplits()) {
+                    if (s.getUserId() != null && !s.isDel()) {
+                        userIds.add(s.getUserId());
+                    }
+                }
+            }
+        }
+        if (userIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        List<UserEntity> users = userRepository.findAllByIdIn(userIds);
+        Map<Long, UserEntity> map = new HashMap<>();
+        for (UserEntity u : users) {
+            map.put(u.getId(), u);
+        }
+        return map;
+    }
+
+    private ExpenseResponse mapToResponse(ExpenseEntity entity, Map<Long, UserEntity> userMap) {
+        UserEntity payer = userMap != null ? userMap.get(entity.getPayerId()) : null;
+        String payerName = payer != null ? payer.getName() : null;
+        String payerEmail = payer != null ? payer.getEmail() : null;
+        String payerAvatarUrl = payer != null ? payer.getAvatarUrl() : null;
+
         List<ExpenseSplitResponse> splitResponses = entity.getSplits().stream()
                 .filter(s -> !s.isDel())
-                .map(s -> new ExpenseSplitResponse(
-                        s.getId(),
-                        s.getUserId(),
-                        s.getAllocatedAmount(),
-                        s.getSplitValue(),
-                        s.isSettled()
-                ))
+                .map(s -> {
+                    UserEntity splitUser = userMap != null ? userMap.get(s.getUserId()) : null;
+                    return new ExpenseSplitResponse(
+                            s.getId(),
+                            s.getUserId(),
+                            splitUser != null ? splitUser.getName() : null,
+                            splitUser != null ? splitUser.getEmail() : null,
+                            splitUser != null ? splitUser.getAvatarUrl() : null,
+                            s.getAllocatedAmount(),
+                            s.getSplitValue(),
+                            s.isSettled()
+                    );
+                })
                 .toList();
 
         return new ExpenseResponse(
                 entity.getId(),
                 entity.getTripId(),
                 entity.getPayerId(),
+                payerName,
+                payerEmail,
+                payerAvatarUrl,
                 entity.getTitle(),
                 entity.getCategory(),
                 entity.getAmount(),
@@ -371,5 +418,10 @@ public class ExpenseService {
                 entity.getUpdatedAt(),
                 splitResponses
         );
+    }
+
+    private ExpenseResponse mapToResponse(ExpenseEntity entity) {
+        Map<Long, UserEntity> userMap = getUserMapForExpenses(List.of(entity));
+        return mapToResponse(entity, userMap);
     }
 }

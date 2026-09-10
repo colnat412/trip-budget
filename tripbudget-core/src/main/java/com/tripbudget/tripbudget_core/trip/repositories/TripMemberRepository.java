@@ -23,4 +23,18 @@ public interface TripMemberRepository extends JpaRepository<TripMemberEntity, Lo
             Long tripId,
             TripMemberStatus status
     );
+
+    List<TripMemberEntity> findByTrip_IdAndIsDelFalseOrderByCreatedAtAsc(
+            Long tripId
+    );
+
+    Optional<TripMemberEntity> findByIdAndTrip_IdAndIsDelFalse(
+            Long id,
+            Long tripId
+    );
+
+    Optional<TripMemberEntity> findByTrip_IdAndUserIdAndIsDelFalse(
+            Long tripId,
+            Long userId
+    );
 }

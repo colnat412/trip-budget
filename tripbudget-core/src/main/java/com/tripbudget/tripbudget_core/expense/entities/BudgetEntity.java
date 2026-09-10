@@ -57,7 +57,12 @@ public class BudgetEntity extends BaseEntity {
     }
 
     public void setCategoryLimit(ExpenseCategory category, BigDecimal limitAmount) {
-        if (category == null || limitAmount == null) {
+        if (category == null) {
+            return;
+        }
+
+        if (limitAmount == null || limitAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            this.categoryBudgets.removeIf(cb -> cb.getCategory() == category);
             return;
         }
 
