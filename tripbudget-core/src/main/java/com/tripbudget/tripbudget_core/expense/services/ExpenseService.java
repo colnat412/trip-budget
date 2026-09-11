@@ -1,5 +1,6 @@
 package com.tripbudget.tripbudget_core.expense.services;
 
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.expense.dtos.request.CreateExpenseRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.SplitItemRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.UpdateExpenseRequest;
@@ -41,13 +42,16 @@ public class ExpenseService {
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final UserRepository userRepository;
+    private final HashidsService hashidsService;
 
     @Transactional
     public ExpenseResponse createExpense(Long currentUserId, Long tripId, CreateExpenseRequest req) {
         TripEntity trip = getValidTrip(tripId);
         validateMembership(tripId, currentUserId);
 
-        Long payerId = req.payerId() != null ? req.payerId() : currentUserId;
+        Long payerId = (req.payerId() != null && !req.payerId().isBlank())
+                ? hashidsService.decode(req.payerId())
+                : currentUserId;
         String currency = (req.currency() != null && !req.currency().isBlank())
                 ? req.currency().trim().toUpperCase(Locale.ROOT)
                 : trip.getBaseCurrency();
@@ -149,7 +153,9 @@ public class ExpenseService {
                 req.receiptUrl()
         );
 
-        Long payerId = req.payerId() != null ? req.payerId() : expense.getPayerId();
+        Long payerId = (req.payerId() != null && !req.payerId().isBlank())
+                ? hashidsService.decode(req.payerId())
+                : expense.getPayerId();
 
         // Cập nhật lại splits nếu có thay đổi splits hoặc thay đổi amount
         if (req.splits() != null && !req.splits().isEmpty()) {
@@ -193,8 +199,11 @@ public class ExpenseService {
 
         if (requestedSplits != null && !requestedSplits.isEmpty()) {
             for (SplitItemRequest item : requestedSplits) {
-                if (item.userId() != null && !targetUserIds.contains(item.userId())) {
-                    targetUserIds.add(item.userId());
+                if (item.userId() != null && !item.userId().isBlank()) {
+                    Long uid = hashidsService.decode(item.userId());
+                    if (!targetUserIds.contains(uid)) {
+                        targetUserIds.add(uid);
+                    }
                 }
             }
         }
@@ -235,10 +244,11 @@ public class ExpenseService {
             }
         } else if (splitType == SplitType.EXACT_AMOUNT && requestedSplits != null) {
             for (SplitItemRequest item : requestedSplits) {
+                Long uid = hashidsService.decode(item.userId());
                 BigDecimal allocated = item.allocatedAmount() != null ? item.allocatedAmount() : BigDecimal.ZERO;
                 expense.addSplit(ExpenseSplitEntity.create(
                         expense,
-                        item.userId(),
+                        uid,
                         allocated,
                         allocated
                 ));
@@ -247,6 +257,7 @@ public class ExpenseService {
             BigDecimal sumAllocated = BigDecimal.ZERO;
             for (int i = 0; i < requestedSplits.size(); i++) {
                 SplitItemRequest item = requestedSplits.get(i);
+                Long uid = hashidsService.decode(item.userId());
                 BigDecimal pct = item.splitValue() != null ? item.splitValue() : BigDecimal.ZERO;
                 BigDecimal allocated = totalAmount.multiply(pct)
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.FLOOR);
@@ -261,7 +272,7 @@ public class ExpenseService {
 
                 expense.addSplit(ExpenseSplitEntity.create(
                         expense,
-                        item.userId(),
+                        uid,
                         allocated,
                         pct
                 ));
@@ -280,6 +291,7 @@ public class ExpenseService {
             BigDecimal sumAllocated = BigDecimal.ZERO;
             for (int i = 0; i < requestedSplits.size(); i++) {
                 SplitItemRequest item = requestedSplits.get(i);
+                Long uid = hashidsService.decode(item.userId());
                 BigDecimal share = item.splitValue() != null ? item.splitValue() : BigDecimal.ONE;
                 BigDecimal allocated = totalAmount.multiply(share)
                         .divide(totalShares, 2, RoundingMode.FLOOR);
@@ -293,7 +305,7 @@ public class ExpenseService {
 
                 expense.addSplit(ExpenseSplitEntity.create(
                         expense,
-                        item.userId(),
+                        uid,
                         allocated,
                         share
                 ));
@@ -386,8 +398,8 @@ public class ExpenseService {
                 .map(s -> {
                     UserEntity splitUser = userMap != null ? userMap.get(s.getUserId()) : null;
                     return new ExpenseSplitResponse(
-                            s.getId(),
-                            s.getUserId(),
+                            hashidsService.encode(s.getId()),
+                            hashidsService.encode(s.getUserId()),
                             splitUser != null ? splitUser.getName() : null,
                             splitUser != null ? splitUser.getEmail() : null,
                             splitUser != null ? splitUser.getAvatarUrl() : null,
@@ -399,9 +411,9 @@ public class ExpenseService {
                 .toList();
 
         return new ExpenseResponse(
-                entity.getId(),
-                entity.getTripId(),
-                entity.getPayerId(),
+                hashidsService.encode(entity.getId()),
+                hashidsService.encode(entity.getTripId()),
+                hashidsService.encode(entity.getPayerId()),
                 payerName,
                 payerEmail,
                 payerAvatarUrl,

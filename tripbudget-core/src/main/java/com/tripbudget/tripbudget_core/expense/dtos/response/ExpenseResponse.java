@@ -10,9 +10,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 public record ExpenseResponse(
-        Long id,
-        Long tripId,
-        Long payerId,
+        String id,
+        String tripId,
+        String payerId,
         String payerName,
         String payerEmail,
         String payerAvatarUrl,

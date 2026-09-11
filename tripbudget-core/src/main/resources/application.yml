@@ -26,6 +26,10 @@ security:
   jwt:
     secret: ${JWT_ACCESS_SECRET}
 
+hashids:
+  salt: ${HASHIDS_SALT:6d8a1d503a90486cd6cef4fb216faabf}
+  min-length: ${HASHIDS_MIN_LENGTH:8}
+
 server:
   servlet:
     context-path: ${API_BASE_PATH:/api}

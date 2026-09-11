@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,6 +28,7 @@ public class TripMemberService {
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final UserRepository userRepository;
+    private final HashidsService hashidsService;
 
     @Transactional(readOnly = true)
     public List<TripMemberResponse> getTripMembers(Long currentUserId, Long tripId) {
@@ -189,9 +191,9 @@ public class TripMemberService {
         String avatarUrl = user != null ? user.getAvatarUrl() : null;
 
         return new TripMemberResponse(
-                member.getId(),
-                member.getTrip().getId(),
-                member.getUserId(),
+                hashidsService.encode(member.getId()),
+                hashidsService.encode(member.getTrip().getId()),
+                hashidsService.encode(member.getUserId()),
                 name,
                 email,
                 avatarUrl,

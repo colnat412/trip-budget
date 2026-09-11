@@ -3,18 +3,16 @@ package com.tripbudget.tripbudget_core.trip.controllers;
 import com.tripbudget.tripbudget_core.common.annotations.CurrentUser;
 import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
-import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
-import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.services.TripService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -26,6 +24,7 @@ import org.springframework.web.bind.annotation.*;
 @Validated
 public class TripController {
     private final TripService tripService;
+    private final HashidsService hashidsService;
 
     @PostMapping("/create")
     public ResponseEntity<ApiResponse<TripResponse>> createTrip(@Valid @RequestBody() CreateTripRequest createTripRequest, @CurrentUser CurrentUserDto user) {
@@ -74,8 +73,9 @@ public class TripController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") Long tripId, @CurrentUser CurrentUserDto user) {
+    public ResponseEntity<ApiResponse<TripResponse>> getTripById(@PathVariable("id") String tripIdHash, @CurrentUser CurrentUserDto user) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
 
         TripResponse response = tripService.getTripById(tripId, currentUserId);
 
@@ -90,11 +90,12 @@ public class TripController {
 
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<TripResponse>> update(
-            @PathVariable("id") Long tripId,
+            @PathVariable("id") String tripIdHash,
             @CurrentUser CurrentUserDto user,
-            @Valid @RequestBody()UpdateTripRequest body
+            @Valid @RequestBody() UpdateTripRequest body
     ){
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
         TripResponse response = tripService.update(currentUserId, tripId, body);
 
         return ResponseEntity.ok(
@@ -108,11 +109,12 @@ public class TripController {
 
     @PutMapping("/delete/{id}")
     public ResponseEntity<ApiResponse<TripResponse>> deleteTrip(
-            @PathVariable("id") Long tripId,
+            @PathVariable("id") String tripIdHash,
             @CurrentUser CurrentUserDto user,
-            @Valid @RequestBody()UpdateTripRequest body
+            @Valid @RequestBody() UpdateTripRequest body
     ){
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
 
         tripService.deleteTrip(currentUserId, tripId);
 

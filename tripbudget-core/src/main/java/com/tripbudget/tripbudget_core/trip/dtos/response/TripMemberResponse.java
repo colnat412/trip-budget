@@ -6,9 +6,9 @@ import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import java.time.Instant;
 
 public record TripMemberResponse(
-        Long id,
-        Long tripId,
-        Long userId,
+        String id,
+        String tripId,
+        String userId,
         String name,
         String email,
         String avatarUrl,
@@ -17,4 +17,3 @@ public record TripMemberResponse(
         Instant joinedAt,
         Instant createdAt
 ) {}
-

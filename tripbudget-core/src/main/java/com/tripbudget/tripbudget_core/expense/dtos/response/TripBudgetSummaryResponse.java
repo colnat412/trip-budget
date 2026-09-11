@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record TripBudgetSummaryResponse(
-        Long tripId,
+        String tripId,
         BigDecimal totalBudget,
         BigDecimal actualSpent,
         BigDecimal remainingBudget,

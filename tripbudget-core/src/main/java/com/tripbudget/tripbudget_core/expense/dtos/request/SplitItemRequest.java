@@ -1,11 +1,11 @@
 package com.tripbudget.tripbudget_core.expense.dtos.request;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import java.math.BigDecimal;
 
 public record SplitItemRequest(
-        @NotNull(message = "User ID is required")
-        Long userId,
+        @NotBlank(message = "User ID is required")
+        String userId,
 
         BigDecimal splitValue,
 

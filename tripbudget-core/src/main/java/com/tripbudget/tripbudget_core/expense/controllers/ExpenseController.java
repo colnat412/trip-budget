@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,14 +28,16 @@ public class ExpenseController {
 
     private final ExpenseService expenseService;
     private final BudgetService budgetService;
+    private final HashidsService hashidsService;
 
     @PostMapping("/expenses")
     public ResponseEntity<ApiResponse<ExpenseResponse>> createExpense(
-            @PathVariable("tripId") Long tripId,
+            @PathVariable("tripId") String tripIdHash,
             @Valid @RequestBody CreateExpenseRequest request,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
         ExpenseResponse response = expenseService.createExpense(currentUserId, tripId, request);
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -47,12 +50,13 @@ public class ExpenseController {
 
     @GetMapping("/expenses")
     public ResponseEntity<ApiResponse<PageResponse<ExpenseResponse>>> getTripExpenses(
-            @PathVariable("tripId") Long tripId,
+            @PathVariable("tripId") String tripIdHash,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) int size,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
         PageResponse<ExpenseResponse> response = expenseService.getTripExpenses(currentUserId, tripId, page, size);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -63,10 +67,11 @@ public class ExpenseController {
 
     @GetMapping("/expenses/summary")
     public ResponseEntity<ApiResponse<TripBudgetSummaryResponse>> getBudgetSummary(
-            @PathVariable("tripId") Long tripId,
+            @PathVariable("tripId") String tripIdHash,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
         TripBudgetSummaryResponse response = budgetService.getBudgetSummary(currentUserId, tripId);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -77,11 +82,13 @@ public class ExpenseController {
 
     @GetMapping("/expenses/{expenseId}")
     public ResponseEntity<ApiResponse<ExpenseResponse>> getExpenseDetail(
-            @PathVariable("tripId") Long tripId,
-            @PathVariable("expenseId") Long expenseId,
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("expenseId") String expenseIdHash,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long expenseId = hashidsService.decode(expenseIdHash);
         ExpenseResponse response = expenseService.getExpenseDetail(currentUserId, tripId, expenseId);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -92,12 +99,14 @@ public class ExpenseController {
 
     @PutMapping("/expenses/{expenseId}")
     public ResponseEntity<ApiResponse<ExpenseResponse>> updateExpense(
-            @PathVariable("tripId") Long tripId,
-            @PathVariable("expenseId") Long expenseId,
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("expenseId") String expenseIdHash,
             @Valid @RequestBody UpdateExpenseRequest request,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long expenseId = hashidsService.decode(expenseIdHash);
         ExpenseResponse response = expenseService.updateExpense(currentUserId, tripId, expenseId, request);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -108,11 +117,13 @@ public class ExpenseController {
 
     @DeleteMapping("/expenses/{expenseId}")
     public ResponseEntity<ApiResponse<Void>> deleteExpense(
-            @PathVariable("tripId") Long tripId,
-            @PathVariable("expenseId") Long expenseId,
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("expenseId") String expenseIdHash,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long expenseId = hashidsService.decode(expenseIdHash);
         expenseService.deleteExpense(currentUserId, tripId, expenseId);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -123,11 +134,12 @@ public class ExpenseController {
 
     @PostMapping("/budget")
     public ResponseEntity<ApiResponse<TripBudgetSummaryResponse>> setBudget(
-            @PathVariable("tripId") Long tripId,
+            @PathVariable("tripId") String tripIdHash,
             @Valid @RequestBody SetBudgetRequest request,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
         TripBudgetSummaryResponse response = budgetService.setBudget(currentUserId, tripId, request);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,

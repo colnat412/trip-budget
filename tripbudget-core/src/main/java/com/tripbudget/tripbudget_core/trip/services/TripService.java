@@ -1,5 +1,6 @@
 package com.tripbudget.tripbudget_core.trip.services;
 
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.InitialMemberRequest;
@@ -28,10 +29,16 @@ import java.util.Set;
 public class TripService {
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final HashidsService hashidsService;
 
-    public TripService(TripRepository tripRepository, TripMemberRepository tripMemberRepository) {
+    public TripService(
+            TripRepository tripRepository,
+            TripMemberRepository tripMemberRepository,
+            HashidsService hashidsService
+    ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
+        this.hashidsService = hashidsService;
     }
 
     @Transactional
@@ -63,13 +70,14 @@ public class TripService {
             Set<Long> invitedUsers = new HashSet<>();
 
             for(InitialMemberRequest item: initialMemberRequestList) {
-                if(item.userId().equals(currentUserId)){
+                Long memberUserId = hashidsService.decode(item.userId());
+                if(memberUserId.equals(currentUserId)){
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "Trip owner must not be added again as a member"
                     );
                 }
-                if(!invitedUsers.add(item.userId())) {
+                if(!invitedUsers.add(memberUserId)) {
                     throw new ResponseStatusException(
                             HttpStatus.BAD_REQUEST,
                             "A user can be invited only once"
@@ -85,11 +93,11 @@ public class TripService {
 
             List<TripMemberEntity> invitations = initialMemberRequestList.stream()
                     .map(item -> TripMemberEntity
-                            .invite(savedTrip, item.userId(), item.role())).toList();
+                            .invite(savedTrip, hashidsService.decode(item.userId()), item.role())).toList();
 
             tripMemberRepository.saveAll(invitations);
 
-            return TripResponse.from(savedTrip);
+            return TripResponse.from(savedTrip, hashidsService);
     }
 
     public PageResponse<TripResponse> getMyTrips(
@@ -104,7 +112,7 @@ public class TripService {
                         PageRequest.of(page, size)
                 );
 
-        Page<TripResponse> responsePage = tripPage.map(TripResponse::from);
+        Page<TripResponse> responsePage = tripPage.map(t -> TripResponse.from(t, hashidsService));
 
         return PageResponse.from(responsePage);
     }
@@ -112,7 +120,7 @@ public class TripService {
     public TripResponse getTripById(Long tripId, Long currentUserId)
     {
         TripEntity trip = this.getActiveMemberTrip(tripId, currentUserId);
-        return TripResponse.from(trip);
+        return TripResponse.from(trip, hashidsService);
     }
 
     @Transactional
@@ -137,7 +145,7 @@ public class TripService {
                 dto.getBaseCurrency()
         );
 
-        return TripResponse.from(trip);
+        return TripResponse.from(trip, hashidsService);
     }
 
     @Transactional

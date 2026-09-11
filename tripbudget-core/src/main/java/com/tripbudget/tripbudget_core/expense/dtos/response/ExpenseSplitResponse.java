@@ -3,8 +3,8 @@ package com.tripbudget.tripbudget_core.expense.dtos.response;
 import java.math.BigDecimal;
 
 public record ExpenseSplitResponse(
-        Long id,
-        Long userId,
+        String id,
+        String userId,
         String userName,
         String userEmail,
         String userAvatarUrl,

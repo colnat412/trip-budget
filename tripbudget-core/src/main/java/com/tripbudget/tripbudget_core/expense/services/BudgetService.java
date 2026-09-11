@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
@@ -32,6 +33,7 @@ public class BudgetService {
     private final ExpenseRepository expenseRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
+    private final HashidsService hashidsService;
 
     @Transactional(readOnly = true)
     public TripBudgetSummaryResponse getBudgetSummary(Long currentUserId, Long tripId) {
@@ -94,7 +96,7 @@ public class BudgetService {
         }
 
         return new TripBudgetSummaryResponse(
-                tripId,
+                hashidsService.encode(tripId),
                 totalBudget,
                 actualSpent,
                 remainingBudget,

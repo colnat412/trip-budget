@@ -26,7 +26,7 @@ public record UpdateExpenseRequest(
 
         String receiptUrl,
 
-        Long payerId,
+        String payerId,
 
         List<SplitItemRequest> splits
 ) {}
