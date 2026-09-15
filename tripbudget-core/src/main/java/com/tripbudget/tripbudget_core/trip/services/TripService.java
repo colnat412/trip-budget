@@ -4,6 +4,7 @@ import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.InitialMemberRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.TripFilterRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
@@ -13,8 +14,11 @@ import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
+import com.tripbudget.tripbudget_core.trip.specifications.TripSpecifications;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,14 +107,16 @@ public class TripService {
     public PageResponse<TripResponse> getMyTrips(
             Long currentUserId,
             int page,
-            int size
+            int size,
+            TripFilterRequest filter
     ) {
-        Page<TripEntity> tripPage =
-                tripRepository.findAllActiveTripsByUserId(
-                        currentUserId,
-                        TripMemberStatus.ACTIVE,
-                        PageRequest.of(page, size)
-                );
+        Specification<TripEntity> spec = TripSpecifications.buildSpecification(currentUserId, filter);
+        Sort sort = TripSpecifications.buildSort(
+                filter != null ? filter.sortBy() : null,
+                filter != null ? filter.sortDirection() : null
+        );
+
+        Page<TripEntity> tripPage = tripRepository.findAll(spec, PageRequest.of(page, size, sort));
 
         Page<TripResponse> responsePage = tripPage.map(t -> TripResponse.from(t, hashidsService));
 

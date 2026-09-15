@@ -4,6 +4,7 @@ import com.tripbudget.tripbudget_core.common.annotations.CurrentUser;
 import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
 import com.tripbudget.tripbudget_core.expense.dtos.request.CreateExpenseRequest;
+import com.tripbudget.tripbudget_core.expense.dtos.request.ExpenseFilterRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.SetBudgetRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.UpdateExpenseRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.response.ExpenseResponse;
@@ -53,11 +54,36 @@ public class ExpenseController {
             @PathVariable("tripId") String tripIdHash,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "10") @Min(1) int size,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String payer,
+            @RequestParam(required = false) String splitType,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
         Long tripId = hashidsService.decode(tripIdHash);
-        PageResponse<ExpenseResponse> response = expenseService.getTripExpenses(currentUserId, tripId, page, size);
+
+        ExpenseFilterRequest filter = new ExpenseFilterRequest(
+                search,
+                title,
+                category,
+                payer,
+                splitType,
+                sortBy,
+                sortDirection
+        );
+
+        PageResponse<ExpenseResponse> response = expenseService.getTripExpenses(
+                currentUserId,
+                tripId,
+                page,
+                size,
+                filter
+        );
+
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
                 "Trip expenses retrieved successfully",

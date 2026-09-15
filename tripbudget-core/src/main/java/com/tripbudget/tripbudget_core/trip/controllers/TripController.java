@@ -5,6 +5,7 @@ import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
 import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.TripFilterRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
@@ -53,14 +54,33 @@ public class TripController {
             @RequestParam(defaultValue = "10")
             @Min(value = 1, message = "Size must be at least 1")
             @Max(value = 100, message = "Size must not exceed 100")
-            int size
+            int size,
+
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String destination,
+            @RequestParam(required = false) String currency,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String sortBy,
+            @RequestParam(required = false) String sortDirection
     ) {
         Long currentUserId = user.id();
+
+        TripFilterRequest filter = new TripFilterRequest(
+                search,
+                name,
+                destination,
+                currency,
+                status,
+                sortBy,
+                sortDirection
+        );
 
         PageResponse<TripResponse> response = tripService.getMyTrips(
                 currentUserId,
                 page,
-                size
+                size,
+                filter
         );
 
         return ResponseEntity.ok(

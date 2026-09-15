@@ -2,6 +2,7 @@ package com.tripbudget.tripbudget_core.expense.services;
 
 import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.expense.dtos.request.CreateExpenseRequest;
+import com.tripbudget.tripbudget_core.expense.dtos.request.ExpenseFilterRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.SplitItemRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.request.UpdateExpenseRequest;
 import com.tripbudget.tripbudget_core.expense.dtos.response.ExpenseResponse;
@@ -11,6 +12,7 @@ import com.tripbudget.tripbudget_core.expense.entities.ExpenseSplitEntity;
 import com.tripbudget.tripbudget_core.expense.enums.ExpenseStatus;
 import com.tripbudget.tripbudget_core.expense.enums.SplitType;
 import com.tripbudget.tripbudget_core.expense.repositories.ExpenseRepository;
+import com.tripbudget.tripbudget_core.expense.specifications.ExpenseSpecifications;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
@@ -24,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,17 +84,44 @@ public class ExpenseService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ExpenseResponse> getTripExpenses(Long currentUserId, Long tripId, int page, int size) {
+    public PageResponse<ExpenseResponse> getTripExpenses(
+            Long currentUserId,
+            Long tripId,
+            int page,
+            int size,
+            ExpenseFilterRequest filter
+    ) {
         getValidTrip(tripId);
         validateMembership(tripId, currentUserId);
 
-        Pageable pageable = PageRequest.of(page, size);
-        Page<ExpenseEntity> expensePage = expenseRepository
-                .findByTripIdAndStatusNotAndIsDelFalseOrderByExpenseDateDesc(
-                        tripId,
-                        ExpenseStatus.DELETED,
-                        pageable
-                );
+        Set<Long> matchedPayerIds = new HashSet<>();
+        boolean hasPayerFilter = filter != null && filter.payer() != null && !filter.payer().isBlank();
+
+        if (hasPayerFilter) {
+            String keyword = filter.payer().trim();
+            matchedPayerIds.addAll(userRepository.findIdsByKeyword(keyword));
+            try {
+                Long decodedId = hashidsService.decode(keyword);
+                if (decodedId != null) {
+                    matchedPayerIds.add(decodedId);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        Specification<ExpenseEntity> spec = ExpenseSpecifications.buildSpecification(
+                tripId,
+                filter,
+                matchedPayerIds,
+                hasPayerFilter
+        );
+
+        Sort sort = ExpenseSpecifications.buildSort(
+                filter != null ? filter.sortBy() : null,
+                filter != null ? filter.sortDirection() : null
+        );
+
+        Pageable pageable = PageRequest.of(page, size, sort);
+        Page<ExpenseEntity> expensePage = expenseRepository.findAll(spec, pageable);
 
         List<ExpenseEntity> content = expensePage.getContent();
         Map<Long, UserEntity> userMap = getUserMapForExpenses(content);
