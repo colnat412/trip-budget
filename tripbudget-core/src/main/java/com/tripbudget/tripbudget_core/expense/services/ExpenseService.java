@@ -76,8 +76,7 @@ public class ExpenseService {
                 req.receiptUrl()
         );
 
-        // Xử lý phân bổ tiền split cho từng thành viên
-        buildExpenseSplits(expense, req.amount(), splitType, req.splits(), payerId, tripId, currentUserId);
+        applyExpenseSplits(expense, req.amount(), splitType, req.splits(), payerId, tripId, currentUserId);
 
         ExpenseEntity savedExpense = expenseRepository.save(expense);
         return mapToResponse(savedExpense);
@@ -167,13 +166,28 @@ public class ExpenseService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Expense has been deleted");
         }
 
-        BigDecimal newAmount = req.amount() != null ? req.amount() : expense.getAmount();
-        SplitType newSplitType = req.splitType() != null ? req.splitType() : expense.getSplitType();
+        Long payerId = expense.getPayerId();
+        if (req.payerId() != null && !req.payerId().isBlank()) {
+            Long decodedPayerId = hashidsService.decode(req.payerId());
+            if (decodedPayerId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid payerId");
+            }
+            payerId = decodedPayerId;
+        }
+
+        BigDecimal oldAmount = expense.getAmount();
+        BigDecimal newAmount = req.amount() != null ? req.amount() : oldAmount;
+        SplitType oldSplitType = expense.getSplitType();
+        SplitType newSplitType = req.splitType() != null ? req.splitType() : oldSplitType;
         String newCurrency = (req.currency() != null && !req.currency().isBlank())
                 ? req.currency().trim().toUpperCase(Locale.ROOT)
                 : expense.getCurrency();
 
+        boolean amountChanged = req.amount() != null && req.amount().compareTo(oldAmount) != 0;
+        boolean splitTypeChanged = req.splitType() != null && req.splitType() != oldSplitType;
+
         expense.update(
+                payerId,
                 req.title() != null ? req.title() : expense.getTitle(),
                 req.category() != null ? req.category() : expense.getCategory(),
                 newAmount,
@@ -184,16 +198,11 @@ public class ExpenseService {
                 req.receiptUrl()
         );
 
-        Long payerId = (req.payerId() != null && !req.payerId().isBlank())
-                ? hashidsService.decode(req.payerId())
-                : expense.getPayerId();
-
-        // Cập nhật lại splits nếu có thay đổi splits hoặc thay đổi amount
         if (req.splits() != null && !req.splits().isEmpty()) {
-            expense.clearSplits();
-            buildExpenseSplits(expense, newAmount, newSplitType, req.splits(), payerId, tripId, currentUserId);
-        } else if (req.amount() != null && req.amount().compareTo(expense.getAmount()) != 0) {
-            // Tái tính toán lại các split hiện tại theo số tiền mới
+            applyExpenseSplits(expense, newAmount, newSplitType, req.splits(), payerId, tripId, currentUserId);
+        } else if (splitTypeChanged && newSplitType == SplitType.EQUAL) {
+            applyExpenseSplits(expense, newAmount, SplitType.EQUAL, null, payerId, tripId, currentUserId);
+        } else if (amountChanged) {
             recalculateExistingSplits(expense, newAmount, payerId);
         }
 
@@ -213,11 +222,9 @@ public class ExpenseService {
         expenseRepository.save(expense);
     }
 
-    // ==========================================
-    // LOGIC TÍNH TOÁN VÀ PHÂN BỔ TIỀN (SPLIT)
-    // ==========================================
+    private record CalculatedSplit(Long userId, BigDecimal allocatedAmount, BigDecimal splitValue) {}
 
-    private void buildExpenseSplits(
+    private void applyExpenseSplits(
             ExpenseEntity expense,
             BigDecimal totalAmount,
             SplitType splitType,
@@ -226,34 +233,75 @@ public class ExpenseService {
             Long tripId,
             Long currentUserId
     ) {
-        List<Long> targetUserIds = new ArrayList<>();
+        Map<Long, CalculatedSplit> targetSplitsMap = calculateSplits(
+                totalAmount,
+                splitType,
+                requestedSplits,
+                payerId,
+                tripId,
+                currentUserId
+        );
 
-        if (requestedSplits != null && !requestedSplits.isEmpty()) {
-            for (SplitItemRequest item : requestedSplits) {
-                if (item.userId() != null && !item.userId().isBlank()) {
-                    Long uid = hashidsService.decode(item.userId());
-                    if (!targetUserIds.contains(uid)) {
-                        targetUserIds.add(uid);
+        List<ExpenseSplitEntity> currentSplits = expense.getSplits();
+
+        currentSplits.removeIf(existing -> !targetSplitsMap.containsKey(existing.getUserId()));
+
+        Set<Long> updatedUserIds = new HashSet<>();
+        for (ExpenseSplitEntity existing : currentSplits) {
+            CalculatedSplit target = targetSplitsMap.get(existing.getUserId());
+            if (target != null) {
+                existing.update(target.allocatedAmount(), target.splitValue());
+                updatedUserIds.add(existing.getUserId());
+            }
+        }
+
+        for (CalculatedSplit target : targetSplitsMap.values()) {
+            if (!updatedUserIds.contains(target.userId())) {
+                expense.addSplit(ExpenseSplitEntity.create(
+                        expense,
+                        target.userId(),
+                        target.allocatedAmount(),
+                        target.splitValue()
+                ));
+            }
+        }
+    }
+
+    private Map<Long, CalculatedSplit> calculateSplits(
+            BigDecimal totalAmount,
+            SplitType splitType,
+            List<SplitItemRequest> requestedSplits,
+            Long payerId,
+            Long tripId,
+            Long currentUserId
+    ) {
+        Map<Long, CalculatedSplit> result = new LinkedHashMap<>();
+
+        if (splitType == SplitType.EQUAL) {
+            List<Long> targetUserIds = new ArrayList<>();
+
+            if (requestedSplits != null && !requestedSplits.isEmpty()) {
+                for (SplitItemRequest item : requestedSplits) {
+                    if (item.userId() != null && !item.userId().isBlank()) {
+                        Long uid = hashidsService.decode(item.userId());
+                        if (uid != null && !targetUserIds.contains(uid)) {
+                            targetUserIds.add(uid);
+                        }
                     }
                 }
             }
-        }
 
-        // Nếu không truyền danh sách user tham gia -> Mặc định lấy tất cả active members trong trip
-        if (targetUserIds.isEmpty()) {
-            List<TripMemberEntity> members = tripMemberRepository.findAllByTrip_IdAndStatus(tripId, TripMemberStatus.ACTIVE);
-            for (TripMemberEntity m : members) {
-                targetUserIds.add(m.getUserId());
-            }
             if (targetUserIds.isEmpty()) {
-                targetUserIds.add(currentUserId);
+                List<TripMemberEntity> members = tripMemberRepository.findAllByTrip_IdAndStatus(tripId, TripMemberStatus.ACTIVE);
+                for (TripMemberEntity m : members) {
+                    targetUserIds.add(m.getUserId());
+                }
+                if (targetUserIds.isEmpty()) {
+                    targetUserIds.add(currentUserId);
+                }
             }
-        }
 
-        int count = targetUserIds.size();
-
-        if (splitType == SplitType.EQUAL) {
-            // Chia đều cho N người, xử lý số dư lẻ dồn cho Payer
+            int count = targetUserIds.size();
             BigDecimal baseShare = totalAmount.divide(BigDecimal.valueOf(count), 2, RoundingMode.FLOOR);
             BigDecimal totalAllocated = baseShare.multiply(BigDecimal.valueOf(count));
             BigDecimal remainder = totalAmount.subtract(totalAllocated);
@@ -266,82 +314,81 @@ public class ExpenseService {
                     remainder = BigDecimal.ZERO;
                 }
 
-                expense.addSplit(ExpenseSplitEntity.create(
-                        expense,
-                        uid,
-                        userShare,
-                        BigDecimal.ONE
-                ));
+                result.put(uid, new CalculatedSplit(uid, userShare, BigDecimal.ONE));
             }
         } else if (splitType == SplitType.EXACT_AMOUNT && requestedSplits != null) {
             for (SplitItemRequest item : requestedSplits) {
-                Long uid = hashidsService.decode(item.userId());
-                BigDecimal allocated = item.allocatedAmount() != null ? item.allocatedAmount() : BigDecimal.ZERO;
-                expense.addSplit(ExpenseSplitEntity.create(
-                        expense,
-                        uid,
-                        allocated,
-                        allocated
-                ));
+                if (item.userId() != null && !item.userId().isBlank()) {
+                    Long uid = hashidsService.decode(item.userId());
+                    if (uid != null) {
+                        BigDecimal allocated = item.allocatedAmount() != null ? item.allocatedAmount() : BigDecimal.ZERO;
+                        result.put(uid, new CalculatedSplit(uid, allocated, allocated));
+                    }
+                }
             }
         } else if (splitType == SplitType.PERCENTAGE && requestedSplits != null) {
-            BigDecimal sumAllocated = BigDecimal.ZERO;
-            for (int i = 0; i < requestedSplits.size(); i++) {
-                SplitItemRequest item = requestedSplits.get(i);
-                Long uid = hashidsService.decode(item.userId());
-                BigDecimal pct = item.splitValue() != null ? item.splitValue() : BigDecimal.ZERO;
-                BigDecimal allocated = totalAmount.multiply(pct)
-                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.FLOOR);
+            record ValidPercentageItem(Long userId, BigDecimal pct) {}
+            List<ValidPercentageItem> validItems = new ArrayList<>();
+            for (SplitItemRequest item : requestedSplits) {
+                if (item.userId() != null && !item.userId().isBlank()) {
+                    Long uid = hashidsService.decode(item.userId());
+                    if (uid != null) {
+                        BigDecimal pct = item.splitValue() != null ? item.splitValue() : BigDecimal.ZERO;
+                        validItems.add(new ValidPercentageItem(uid, pct));
+                    }
+                }
+            }
 
+            BigDecimal sumAllocated = BigDecimal.ZERO;
+            for (int i = 0; i < validItems.size(); i++) {
+                ValidPercentageItem item = validItems.get(i);
+                BigDecimal allocated = totalAmount.multiply(item.pct())
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.FLOOR);
                 sumAllocated = sumAllocated.add(allocated);
 
-                // Dòng cuối cùng nhận phần bù chênh lệch để tổng bằng 100%
-                if (i == requestedSplits.size() - 1) {
+                if (i == validItems.size() - 1) {
                     BigDecimal diff = totalAmount.subtract(sumAllocated);
                     allocated = allocated.add(diff);
                 }
 
-                expense.addSplit(ExpenseSplitEntity.create(
-                        expense,
-                        uid,
-                        allocated,
-                        pct
-                ));
+                result.put(item.userId(), new CalculatedSplit(item.userId(), allocated, item.pct()));
             }
         } else if (splitType == SplitType.SHARE && requestedSplits != null) {
+            record ValidShareItem(Long userId, BigDecimal share) {}
+            List<ValidShareItem> validItems = new ArrayList<>();
             BigDecimal totalShares = BigDecimal.ZERO;
             for (SplitItemRequest item : requestedSplits) {
-                BigDecimal share = item.splitValue() != null ? item.splitValue() : BigDecimal.ONE;
-                totalShares = totalShares.add(share);
+                if (item.userId() != null && !item.userId().isBlank()) {
+                    Long uid = hashidsService.decode(item.userId());
+                    if (uid != null) {
+                        BigDecimal share = item.splitValue() != null ? item.splitValue() : BigDecimal.ONE;
+                        validItems.add(new ValidShareItem(uid, share));
+                        totalShares = totalShares.add(share);
+                    }
+                }
             }
 
             if (totalShares.compareTo(BigDecimal.ZERO) <= 0) {
-                totalShares = BigDecimal.valueOf(count);
+                totalShares = BigDecimal.valueOf(Math.max(1, validItems.size()));
             }
 
             BigDecimal sumAllocated = BigDecimal.ZERO;
-            for (int i = 0; i < requestedSplits.size(); i++) {
-                SplitItemRequest item = requestedSplits.get(i);
-                Long uid = hashidsService.decode(item.userId());
-                BigDecimal share = item.splitValue() != null ? item.splitValue() : BigDecimal.ONE;
-                BigDecimal allocated = totalAmount.multiply(share)
+            for (int i = 0; i < validItems.size(); i++) {
+                ValidShareItem item = validItems.get(i);
+                BigDecimal allocated = totalAmount.multiply(item.share())
                         .divide(totalShares, 2, RoundingMode.FLOOR);
-
                 sumAllocated = sumAllocated.add(allocated);
 
-                if (i == requestedSplits.size() - 1) {
+                if (i == validItems.size() - 1) {
                     BigDecimal diff = totalAmount.subtract(sumAllocated);
                     allocated = allocated.add(diff);
                 }
 
-                expense.addSplit(ExpenseSplitEntity.create(
-                        expense,
-                        uid,
-                        allocated,
-                        share
-                ));
+                result.put(item.userId(), new CalculatedSplit(item.userId(), allocated, item.share()));
             }
         }
+
+        return result;
     }
 
     private void recalculateExistingSplits(ExpenseEntity expense, BigDecimal newTotalAmount, Long payerId) {
@@ -356,20 +403,57 @@ public class ExpenseService {
             BigDecimal totalAllocated = baseShare.multiply(BigDecimal.valueOf(count));
             BigDecimal remainder = newTotalAmount.subtract(totalAllocated);
 
-            for (ExpenseSplitEntity s : splits) {
+            for (int i = 0; i < count; i++) {
+                ExpenseSplitEntity s = splits.get(i);
                 BigDecimal userShare = baseShare;
-                if (s.getUserId().equals(payerId)) {
+                if (s.getUserId().equals(payerId) || (remainder.compareTo(BigDecimal.ZERO) > 0 && i == 0)) {
                     userShare = userShare.add(remainder);
                     remainder = BigDecimal.ZERO;
                 }
                 s.update(userShare, BigDecimal.ONE);
             }
+        } else if (splitType == SplitType.PERCENTAGE) {
+            BigDecimal sumAllocated = BigDecimal.ZERO;
+            for (int i = 0; i < count; i++) {
+                ExpenseSplitEntity s = splits.get(i);
+                BigDecimal pct = s.getSplitValue() != null ? s.getSplitValue() : BigDecimal.ZERO;
+                BigDecimal allocated = newTotalAmount.multiply(pct)
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.FLOOR);
+                sumAllocated = sumAllocated.add(allocated);
+
+                if (i == count - 1) {
+                    BigDecimal diff = newTotalAmount.subtract(sumAllocated);
+                    allocated = allocated.add(diff);
+                }
+                s.update(allocated, pct);
+            }
+        } else if (splitType == SplitType.SHARE) {
+            BigDecimal totalShares = BigDecimal.ZERO;
+            for (ExpenseSplitEntity s : splits) {
+                BigDecimal share = s.getSplitValue() != null ? s.getSplitValue() : BigDecimal.ONE;
+                totalShares = totalShares.add(share);
+            }
+            if (totalShares.compareTo(BigDecimal.ZERO) <= 0) {
+                totalShares = BigDecimal.valueOf(count);
+            }
+
+            BigDecimal sumAllocated = BigDecimal.ZERO;
+            for (int i = 0; i < count; i++) {
+                ExpenseSplitEntity s = splits.get(i);
+                BigDecimal share = s.getSplitValue() != null ? s.getSplitValue() : BigDecimal.ONE;
+                BigDecimal allocated = newTotalAmount.multiply(share)
+                        .divide(totalShares, 2, RoundingMode.FLOOR);
+                sumAllocated = sumAllocated.add(allocated);
+
+                if (i == count - 1) {
+                    BigDecimal diff = newTotalAmount.subtract(sumAllocated);
+                    allocated = allocated.add(diff);
+                }
+                s.update(allocated, share);
+            }
         }
     }
 
-    // ==========================================
-    // VALIDATION VÀ HELPER MAPPERS
-    // ==========================================
 
     private TripEntity getValidTrip(Long tripId) {
         TripEntity trip = tripRepository.findActiveTrip(tripId);

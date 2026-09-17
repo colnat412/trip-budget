@@ -99,6 +99,7 @@ public class ExpenseEntity extends BaseEntity {
     }
 
     public void update(
+            Long payerId,
             String title,
             ExpenseCategory category,
             BigDecimal amount,
@@ -108,6 +109,9 @@ public class ExpenseEntity extends BaseEntity {
             String note,
             String receiptUrl
     ) {
+        if (payerId != null) {
+            this.payerId = payerId;
+        }
         if (title != null && !title.isBlank()) {
             this.title = title.trim();
         }
@@ -128,6 +132,19 @@ public class ExpenseEntity extends BaseEntity {
         }
         this.note = note != null && !note.isBlank() ? note.trim() : null;
         this.receiptUrl = receiptUrl != null && !receiptUrl.isBlank() ? receiptUrl.trim() : null;
+    }
+
+    public void update(
+            String title,
+            ExpenseCategory category,
+            BigDecimal amount,
+            String currency,
+            LocalDate expenseDate,
+            SplitType splitType,
+            String note,
+            String receiptUrl
+    ) {
+        update(null, title, category, amount, currency, expenseDate, splitType, note, receiptUrl);
     }
 
     public void deleteExpense() {

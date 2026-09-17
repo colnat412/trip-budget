@@ -1,5 +1,6 @@
 package com.tripbudget.tripbudget_core.trip.dtos.request;
 
+import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -28,5 +29,8 @@ public class UpdateTripRequest {
             regexp = "^[A-Z]{3}$",
             message = "Base currency must be a 3-letter uppercase code"
     )
-    private String baseCurrency = "VND";
+    private String baseCurrency;
+
+    private TripStatus status;
 }
+

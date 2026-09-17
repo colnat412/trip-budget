@@ -12,6 +12,7 @@ import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
+import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import com.tripbudget.tripbudget_core.trip.specifications.TripSpecifications;
@@ -142,13 +143,21 @@ public class TripService {
             );
         }
 
+        if (dto.getStatus() == TripStatus.DELETED) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot set trip status to DELETED via update. Use delete trip endpoint instead."
+            );
+        }
+
         trip.update(
                 dto.getName(),
                 dto.getDescription(),
                 dto.getDestination(),
                 dto.getStartDate(),
                 dto.getEndDate(),
-                dto.getBaseCurrency()
+                dto.getBaseCurrency(),
+                dto.getStatus()
         );
 
         return TripResponse.from(trip, hashidsService);

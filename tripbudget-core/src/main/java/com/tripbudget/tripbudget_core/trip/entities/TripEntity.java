@@ -84,7 +84,8 @@ public class TripEntity extends BaseEntity {
             String destination,
             LocalDate startDate,
             LocalDate endDate,
-            String baseCurrency
+            String baseCurrency,
+            TripStatus status
     ) {
         if (name != null) {
             this.name = name.trim();
@@ -110,6 +111,27 @@ public class TripEntity extends BaseEntity {
             this.baseCurrency = baseCurrency
                     .trim()
                     .toUpperCase(Locale.ROOT);
+        }
+
+        if (status != null && status != TripStatus.DELETED) {
+            this.status = status;
+        }
+    }
+
+    public void update(
+            String name,
+            String description,
+            String destination,
+            LocalDate startDate,
+            LocalDate endDate,
+            String baseCurrency
+    ) {
+        this.update(name, description, destination, startDate, endDate, baseCurrency, null);
+    }
+
+    public void changeStatus(TripStatus newStatus) {
+        if (newStatus != null && newStatus != TripStatus.DELETED) {
+            this.status = newStatus;
         }
     }
 
