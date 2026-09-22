@@ -95,6 +95,19 @@ public class BudgetService {
             ));
         }
 
+        breakdownList.sort((a, b) -> {
+            boolean aOver = a.limitAmount().compareTo(BigDecimal.ZERO) > 0 && a.spentAmount().compareTo(a.limitAmount()) > 0;
+            boolean bOver = b.limitAmount().compareTo(BigDecimal.ZERO) > 0 && b.spentAmount().compareTo(b.limitAmount()) > 0;
+            if (aOver && !bOver) return -1;
+            if (!aOver && bOver) return 1;
+            if (aOver && bOver) {
+                BigDecimal aExcess = a.spentAmount().subtract(a.limitAmount());
+                BigDecimal bExcess = b.spentAmount().subtract(b.limitAmount());
+                return bExcess.compareTo(aExcess);
+            }
+            return b.spentAmount().compareTo(a.spentAmount());
+        });
+
         return new TripBudgetSummaryResponse(
                 hashidsService.encode(tripId),
                 totalBudget,
