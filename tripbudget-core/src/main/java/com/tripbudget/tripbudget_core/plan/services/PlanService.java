@@ -1,6 +1,9 @@
 package com.tripbudget.tripbudget_core.plan.services;
 
 import com.tripbudget.tripbudget_core.common.services.HashidsService;
+import com.tripbudget.tripbudget_core.expense.entities.ExpenseEntity;
+import com.tripbudget.tripbudget_core.expense.enums.ExpenseStatus;
+import com.tripbudget.tripbudget_core.expense.repositories.ExpenseRepository;
 import com.tripbudget.tripbudget_core.plan.dtos.request.*;
 import com.tripbudget.tripbudget_core.plan.dtos.response.*;
 import com.tripbudget.tripbudget_core.plan.entities.PlanActivityEntity;
@@ -36,6 +39,7 @@ public class PlanService {
     private final PlanDayRepository planDayRepository;
     private final PlanActivityRepository planActivityRepository;
     private final PlanChecklistRepository planChecklistRepository;
+    private final ExpenseRepository expenseRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final UserRepository userRepository;
@@ -73,13 +77,42 @@ public class PlanService {
         int totalActivities = 0;
         int completedActivities = 0;
 
-        List<PlanDayResponse> dayResponses = new ArrayList<>();
+        List<List<PlanActivityEntity>> dayActivitiesList = new ArrayList<>();
+        Set<Long> expenseIds = new HashSet<>();
         for (PlanDayEntity day : days) {
             List<PlanActivityEntity> activities = planActivityRepository
                     .findAllByDayIdSorted(day.getId());
-
-            List<PlanActivityResponse> actResponses = new ArrayList<>();
+            dayActivitiesList.add(activities);
             for (PlanActivityEntity act : activities) {
+                if (act.getExpenseId() != null) {
+                    expenseIds.add(act.getExpenseId());
+                }
+            }
+        }
+
+        Set<Long> activeExpenseIds = Collections.emptySet();
+        if (!expenseIds.isEmpty()) {
+            activeExpenseIds = expenseRepository.findAllById(expenseIds).stream()
+                    .filter(e -> !e.isDel() && e.getStatus() != ExpenseStatus.DELETED)
+                    .map(ExpenseEntity::getId)
+                    .collect(Collectors.toSet());
+        }
+
+        List<PlanDayResponse> dayResponses = new ArrayList<>();
+        for (int i = 0; i < days.size(); i++) {
+            PlanDayEntity day = days.get(i);
+            List<PlanActivityEntity> activities = dayActivitiesList.get(i);
+            List<PlanActivityResponse> actResponses = new ArrayList<>();
+
+            for (PlanActivityEntity act : activities) {
+                if (act.getExpenseId() != null && !activeExpenseIds.contains(act.getExpenseId())) {
+                    act.setExpenseId(null);
+                    if (act.getStatus() == ActivityStatus.COMPLETED) {
+                        act.updateStatus(ActivityStatus.PLANNED);
+                    }
+                    planActivityRepository.save(act);
+                }
+
                 actResponses.add(PlanActivityResponse.from(act, hashidsService));
                 if (act.getEstimatedCost() != null) {
                     totalEstimatedCost = totalEstimatedCost.add(act.getEstimatedCost());

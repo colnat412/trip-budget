@@ -13,6 +13,9 @@ import com.tripbudget.tripbudget_core.expense.enums.ExpenseStatus;
 import com.tripbudget.tripbudget_core.expense.enums.SplitType;
 import com.tripbudget.tripbudget_core.expense.repositories.ExpenseRepository;
 import com.tripbudget.tripbudget_core.expense.specifications.ExpenseSpecifications;
+import com.tripbudget.tripbudget_core.plan.entities.PlanActivityEntity;
+import com.tripbudget.tripbudget_core.plan.enums.ActivityStatus;
+import com.tripbudget.tripbudget_core.plan.repositories.PlanActivityRepository;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
@@ -43,6 +46,7 @@ import java.util.*;
 public class ExpenseService {
 
     private final ExpenseRepository expenseRepository;
+    private final PlanActivityRepository planActivityRepository;
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final UserRepository userRepository;
@@ -220,6 +224,15 @@ public class ExpenseService {
 
         expense.deleteExpense();
         expenseRepository.save(expense);
+
+        List<PlanActivityEntity> linkedActivities = planActivityRepository.findAllByExpenseIdAndIsDelFalse(expenseId);
+        for (PlanActivityEntity activity : linkedActivities) {
+            activity.setExpenseId(null);
+            if (activity.getStatus() == ActivityStatus.COMPLETED) {
+                activity.updateStatus(ActivityStatus.PLANNED);
+            }
+            planActivityRepository.save(activity);
+        }
     }
 
     private record CalculatedSplit(Long userId, BigDecimal allocatedAmount, BigDecimal splitValue) {}

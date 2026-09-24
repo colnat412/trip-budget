@@ -22,5 +22,7 @@ public interface PlanActivityRepository extends JpaRepository<PlanActivityEntity
     Optional<PlanActivityEntity> findByIdAndTripIdAndIsDelFalse(Long id, Long tripId);
 
     Optional<PlanActivityEntity> findByExpenseIdAndIsDelFalse(Long expenseId);
+
+    List<PlanActivityEntity> findAllByExpenseIdAndIsDelFalse(Long expenseId);
 }
 

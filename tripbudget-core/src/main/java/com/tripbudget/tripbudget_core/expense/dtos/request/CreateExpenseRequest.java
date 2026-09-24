@@ -23,6 +23,7 @@ public record CreateExpenseRequest(
 
         String currency,
 
+        @NotNull(message = "Expense date is required")
         LocalDate expenseDate,
 
         SplitType splitType,

@@ -19,6 +19,7 @@ public class CreateTripRequest {
     @Size(max = 200)
     private String name;
 
+    @NotBlank(message = "Destination is required")
     @Size(max = 255)
     private String destination;
 
