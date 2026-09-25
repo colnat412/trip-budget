@@ -232,7 +232,7 @@ public class SettlementService {
         TripMemberEntity member = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(tripId, currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied"));
 
-        boolean isPrivileged = member.getRole() == TripMemberRole.OWNER || member.getRole() == TripMemberRole.EDITOR;
+        boolean isPrivileged = member.getRole() == TripMemberRole.OWNER || member.getRole() == TripMemberRole.VICE || member.getRole() == TripMemberRole.EDITOR;
         boolean isParty = currentUserId.equals(settlement.getPayerId()) || currentUserId.equals(settlement.getPayeeId());
 
         if (!isPrivileged && !isParty) {

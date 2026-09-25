@@ -48,4 +48,6 @@ public interface TripRepository extends JpaRepository<TripEntity, Long>, JpaSpec
     """
     )
     TripEntity findActiveTrip(@Param("tripId") Long tripId);
+
+    Optional<TripEntity> findByShareTokenAndIsDelFalse(String shareToken);
 }

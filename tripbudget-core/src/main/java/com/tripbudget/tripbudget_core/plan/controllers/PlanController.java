@@ -5,6 +5,7 @@ import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
 import com.tripbudget.tripbudget_core.common.services.HashidsService;
 import com.tripbudget.tripbudget_core.plan.dtos.request.*;
+import com.tripbudget.tripbudget_core.plan.dtos.response.PlanActivityLogResponse;
 import com.tripbudget.tripbudget_core.plan.dtos.response.PlanActivityResponse;
 import com.tripbudget.tripbudget_core.plan.dtos.response.PlanChecklistResponse;
 import com.tripbudget.tripbudget_core.plan.dtos.response.PlanDayResponse;
@@ -277,6 +278,23 @@ public class PlanController {
                 HttpStatus.OK,
                 "Checklist item deleted successfully",
                 null
+        ));
+    }
+
+    @GetMapping("/activities/logs")
+    public ResponseEntity<ApiResponse<List<PlanActivityLogResponse>>> getActivityLogs(
+            @PathVariable("tripId") String tripIdHash,
+            @CurrentUser CurrentUserDto user
+    ) {
+        Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+
+        List<PlanActivityLogResponse> response = planService.getActivityLogs(currentUserId, tripId);
+
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK,
+                "Activity logs retrieved successfully",
+                response
         ));
     }
 }

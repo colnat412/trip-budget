@@ -77,6 +77,23 @@ public class TripMemberController {
         ));
     }
 
+    @PutMapping("/{memberId}/accept")
+    public ResponseEntity<ApiResponse<TripMemberResponse>> acceptMember(
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("memberId") String memberIdHash,
+            @CurrentUser CurrentUserDto user
+    ) {
+        Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long memberId = hashidsService.decode(memberIdHash);
+        TripMemberResponse response = tripMemberService.acceptMember(currentUserId, tripId, memberId);
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK,
+                "Member approved successfully",
+                response
+        ));
+    }
+
     @DeleteMapping("/{memberId}")
     public ResponseEntity<ApiResponse<Void>> removeMember(
             @PathVariable("tripId") String tripIdHash,

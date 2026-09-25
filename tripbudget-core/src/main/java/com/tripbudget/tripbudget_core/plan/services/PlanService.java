@@ -7,14 +7,20 @@ import com.tripbudget.tripbudget_core.expense.repositories.ExpenseRepository;
 import com.tripbudget.tripbudget_core.plan.dtos.request.*;
 import com.tripbudget.tripbudget_core.plan.dtos.response.*;
 import com.tripbudget.tripbudget_core.plan.entities.PlanActivityEntity;
+import com.tripbudget.tripbudget_core.plan.entities.PlanActivityLogEntity;
 import com.tripbudget.tripbudget_core.plan.entities.PlanChecklistEntity;
 import com.tripbudget.tripbudget_core.plan.entities.PlanDayEntity;
+import com.tripbudget.tripbudget_core.plan.enums.ActivityLogAction;
 import com.tripbudget.tripbudget_core.plan.enums.ActivityStatus;
+import com.tripbudget.tripbudget_core.plan.repositories.PlanActivityLogRepository;
 import com.tripbudget.tripbudget_core.plan.repositories.PlanActivityRepository;
 import com.tripbudget.tripbudget_core.plan.repositories.PlanChecklistRepository;
 import com.tripbudget.tripbudget_core.plan.repositories.PlanDayRepository;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
+import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
+import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
+import com.tripbudget.tripbudget_core.trip.enums.TripVisibility;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import com.tripbudget.tripbudget_core.user.entities.UserEntity;
@@ -38,6 +44,7 @@ public class PlanService {
 
     private final PlanDayRepository planDayRepository;
     private final PlanActivityRepository planActivityRepository;
+    private final PlanActivityLogRepository planActivityLogRepository;
     private final PlanChecklistRepository planChecklistRepository;
     private final ExpenseRepository expenseRepository;
     private final TripRepository tripRepository;
@@ -64,9 +71,39 @@ public class PlanService {
         return trip;
     }
 
+    private void assertCanEditPlan(Long tripId, Long currentUserId) {
+        TripMemberEntity member = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(tripId, currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have access to this trip"));
+
+        if (member.getStatus() != TripMemberStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have active access to this trip");
+        }
+
+        if (member.getRole() == TripMemberRole.VIEWER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Viewers do not have permission to modify the plan");
+        }
+    }
+
     @Transactional
     public TripPlanOverviewResponse getTripPlanOverview(Long currentUserId, Long tripId) {
         TripEntity trip = getActiveMemberTrip(tripId, currentUserId);
+        return buildTripPlanOverview(trip);
+    }
+
+    @Transactional
+    public TripPlanOverviewResponse getPublicTripPlanOverview(String shareToken) {
+        TripEntity trip = tripRepository.findByShareTokenAndIsDelFalse(shareToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found or link has expired"));
+
+        if (trip.getVisibility() != TripVisibility.PUBLIC) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This trip is private. Only members can view it.");
+        }
+
+        return buildTripPlanOverview(trip);
+    }
+
+    private TripPlanOverviewResponse buildTripPlanOverview(TripEntity trip) {
+        Long tripId = trip.getId();
 
         List<PlanDayEntity> days = planDayRepository.findAllByTripIdAndIsDelFalseOrderByDayNumberAsc(tripId);
         if (days.isEmpty()) {
@@ -238,6 +275,7 @@ public class PlanService {
     @Transactional
     public PlanActivityResponse createActivity(Long currentUserId, Long tripId, Long dayId, CreateActivityRequest request) {
         getActiveMemberTrip(tripId, currentUserId);
+        assertCanEditPlan(tripId, currentUserId);
 
         PlanDayEntity day = planDayRepository.findByIdAndTripIdAndIsDelFalse(dayId, tripId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan day not found"));
@@ -263,12 +301,32 @@ public class PlanService {
         );
 
         PlanActivityEntity saved = planActivityRepository.save(activity);
+
+        String desc = "Đã tạo hoạt động \"" + saved.getTitle() + "\"";
+        if (saved.getLocation() != null && !saved.getLocation().isBlank()) {
+            desc += " tại " + saved.getLocation();
+        }
+        if (saved.getStartTime() != null) {
+            desc += " (" + saved.getStartTime() + (saved.getEndTime() != null ? " - " + saved.getEndTime() : "") + ")";
+        }
+
+        planActivityLogRepository.save(PlanActivityLogEntity.create(
+                tripId,
+                dayId,
+                saved.getId(),
+                currentUserId,
+                ActivityLogAction.CREATED,
+                saved.getTitle(),
+                desc
+        ));
+
         return PlanActivityResponse.from(saved, hashidsService);
     }
 
     @Transactional
     public PlanActivityResponse updateActivity(Long currentUserId, Long tripId, Long activityId, UpdateActivityRequest request) {
         getActiveMemberTrip(tripId, currentUserId);
+        assertCanEditPlan(tripId, currentUserId);
 
         PlanActivityEntity activity = planActivityRepository.findByIdAndTripIdAndIsDelFalse(activityId, tripId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activity not found"));
@@ -287,6 +345,24 @@ public class PlanService {
             expenseId = hashidsService.decode(request.expenseId());
         }
 
+        StringBuilder changes = new StringBuilder();
+        if (!activity.getTitle().equals(request.title())) {
+            changes.append("Đổi tên: \"").append(request.title()).append("\". ");
+        }
+        if (request.status() != null && activity.getStatus() != request.status()) {
+            changes.append("Đổi trạng thái: ").append(request.status() == ActivityStatus.COMPLETED ? "Hoàn thành" : "Dự kiến").append(". ");
+        }
+        if (request.startTime() != null && !request.startTime().equals(activity.getStartTime())) {
+            changes.append("Giờ: ").append(request.startTime()).append(request.endTime() != null ? " - " + request.endTime() : "").append(". ");
+        }
+        if (request.location() != null && !request.location().equals(activity.getLocation())) {
+            changes.append("Địa điểm: ").append(request.location()).append(". ");
+        }
+        if (request.estimatedCost() != null && !request.estimatedCost().equals(activity.getEstimatedCost())) {
+            changes.append("Chi phí: ").append(request.estimatedCost()).append(". ");
+        }
+        String desc = changes.length() > 0 ? changes.toString().trim() : "Cập nhật chi tiết hoạt động";
+
         activity.updateDetails(
                 request.title(),
                 request.startTime(),
@@ -300,28 +376,88 @@ public class PlanService {
                 expenseId
         );
 
+        planActivityLogRepository.save(PlanActivityLogEntity.create(
+                tripId,
+                activity.getDay().getId(),
+                activity.getId(),
+                currentUserId,
+                ActivityLogAction.UPDATED,
+                activity.getTitle(),
+                desc
+        ));
+
         return PlanActivityResponse.from(activity, hashidsService);
     }
 
     @Transactional
     public PlanActivityResponse updateActivityStatus(Long currentUserId, Long tripId, Long activityId, ActivityStatus status) {
         getActiveMemberTrip(tripId, currentUserId);
+        assertCanEditPlan(tripId, currentUserId);
 
         PlanActivityEntity activity = planActivityRepository.findByIdAndTripIdAndIsDelFalse(activityId, tripId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activity not found"));
 
         activity.updateStatus(status);
+
+        String statusLabel = status == ActivityStatus.COMPLETED ? "Đã hoàn thành" : "Dự kiến";
+        planActivityLogRepository.save(PlanActivityLogEntity.create(
+                tripId,
+                activity.getDay().getId(),
+                activity.getId(),
+                currentUserId,
+                ActivityLogAction.STATUS_CHANGED,
+                activity.getTitle(),
+                "Đổi trạng thái sang: " + statusLabel
+        ));
+
         return PlanActivityResponse.from(activity, hashidsService);
     }
 
     @Transactional
     public void deleteActivity(Long currentUserId, Long tripId, Long activityId) {
         getActiveMemberTrip(tripId, currentUserId);
+        assertCanEditPlan(tripId, currentUserId);
 
         PlanActivityEntity activity = planActivityRepository.findByIdAndTripIdAndIsDelFalse(activityId, tripId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Activity not found"));
 
         activity.markDeleted();
+
+        planActivityLogRepository.save(PlanActivityLogEntity.create(
+                tripId,
+                activity.getDay().getId(),
+                activity.getId(),
+                currentUserId,
+                ActivityLogAction.DELETED,
+                activity.getTitle(),
+                "Đã xóa hoạt động \"" + activity.getTitle() + "\" khỏi lịch trình"
+        ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlanActivityLogResponse> getActivityLogs(Long currentUserId, Long tripId) {
+        getActiveMemberTrip(tripId, currentUserId);
+
+        List<PlanActivityLogEntity> logs = planActivityLogRepository
+                .findAllByTripIdAndIsDelFalseOrderByCreatedAtDesc(tripId);
+
+        Set<Long> userIds = logs.stream()
+                .map(PlanActivityLogEntity::getUserId)
+                .collect(Collectors.toSet());
+
+        Map<Long, UserEntity> userMap = Collections.emptyMap();
+        if (!userIds.isEmpty()) {
+            userMap = userRepository.findAllByIdIn(userIds).stream()
+                    .collect(Collectors.toMap(UserEntity::getId, Function.identity()));
+        }
+
+        List<PlanActivityLogResponse> responses = new ArrayList<>();
+        for (PlanActivityLogEntity log : logs) {
+            UserEntity user = userMap.get(log.getUserId());
+            responses.add(PlanActivityLogResponse.from(log, user, hashidsService));
+        }
+
+        return responses;
     }
 
     @Transactional(readOnly = true)

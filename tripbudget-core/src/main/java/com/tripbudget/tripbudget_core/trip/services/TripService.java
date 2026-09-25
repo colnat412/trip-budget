@@ -5,14 +5,18 @@ import com.tripbudget.tripbudget_core.trip.dtos.request.CreateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.GetAllTripsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.InitialMemberRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.TripFilterRequest;
+import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateShareSettingsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PublicTripResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
+import com.tripbudget.tripbudget_core.trip.dtos.response.TripShareResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
+import com.tripbudget.tripbudget_core.trip.enums.TripVisibility;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import com.tripbudget.tripbudget_core.trip.specifications.TripSpecifications;
@@ -135,6 +139,13 @@ public class TripService {
     {
         TripEntity trip = this.getActiveMemberTrip(tripId, currentUserId);
 
+        if (!trip.getOwnerId().equals(currentUserId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only the trip owner can update this trip"
+            );
+        }
+
         if(dto.getEndDate() != null && dto.getStartDate() != null && dto.getEndDate().isBefore(dto.getStartDate()))
         {
             throw new ResponseStatusException(
@@ -172,6 +183,14 @@ public class TripService {
                 tripId,
                 currentUserId
         );
+
+        if (!trip.getOwnerId().equals(currentUserId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Only the trip owner can delete this trip"
+            );
+        }
+
         trip.deleteTrip();
 //        tripRepository.delete(trip);
     }
@@ -204,6 +223,112 @@ public class TripService {
         }
 
         return trip;
+    }
+
+    public TripShareResponse getShareSettings(Long currentUserId, Long tripId) {
+        TripEntity trip = getActiveMemberTrip(tripId, currentUserId);
+        return new TripShareResponse(
+                hashidsService.encode(trip.getId()),
+                trip.getVisibility(),
+                trip.getPublicRole(),
+                trip.getShareToken()
+        );
+    }
+
+    @Transactional
+    public TripShareResponse updateShareSettings(
+            Long currentUserId,
+            Long tripId,
+            UpdateShareSettingsRequest dto
+    ) {
+        TripEntity trip = getActiveMemberTrip(tripId, currentUserId);
+
+        TripMemberEntity caller = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(tripId, currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission in this trip"));
+
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner and vice can update share settings");
+        }
+
+        TripMemberRole role = dto.publicRole() != null ? dto.publicRole() : TripMemberRole.VIEWER;
+        trip.updateShareSettings(dto.visibility(), role);
+
+        return new TripShareResponse(
+                hashidsService.encode(trip.getId()),
+                trip.getVisibility(),
+                trip.getPublicRole(),
+                trip.getShareToken()
+        );
+    }
+
+    @Transactional
+    public TripShareResponse regenerateShareToken(Long currentUserId, Long tripId) {
+        TripEntity trip = getActiveMemberTrip(tripId, currentUserId);
+
+        TripMemberEntity caller = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(tripId, currentUserId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "You do not have permission in this trip"));
+
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner and vice can regenerate share link");
+        }
+
+        trip.regenerateShareToken();
+
+        return new TripShareResponse(
+                hashidsService.encode(trip.getId()),
+                trip.getVisibility(),
+                trip.getPublicRole(),
+                trip.getShareToken()
+        );
+    }
+
+    public PublicTripResponse getPublicTrip(String shareToken, Long currentUserId) {
+        TripEntity trip = tripRepository.findByShareTokenAndIsDelFalse(shareToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found or link has expired"));
+
+        if (trip.getVisibility() != TripVisibility.PUBLIC) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This trip is private. Only members can view it.");
+        }
+
+        TripMemberStatus userStatus = null;
+        if (currentUserId != null) {
+            if (currentUserId.equals(trip.getOwnerId())) {
+                userStatus = TripMemberStatus.ACTIVE;
+            } else {
+                userStatus = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(trip.getId(), currentUserId)
+                        .map(TripMemberEntity::getStatus)
+                        .orElse(null);
+            }
+        }
+
+        return PublicTripResponse.from(trip, userStatus);
+    }
+
+    @Transactional
+    public TripResponse joinPublicTrip(String shareToken, Long currentUserId) {
+        TripEntity trip = tripRepository.findByShareTokenAndIsDelFalse(shareToken)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found or link has expired"));
+
+        if (trip.getVisibility() != TripVisibility.PUBLIC) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This trip is private. Only members can join.");
+        }
+
+        java.util.Optional<TripMemberEntity> existingMemberOpt = tripMemberRepository.findByTrip_IdAndUserId(trip.getId(), currentUserId);
+        TripMemberRole assignRole = trip.getPublicRole() != null ? trip.getPublicRole() : TripMemberRole.VIEWER;
+
+        if (existingMemberOpt.isEmpty()) {
+            // Khi tham gia qua link, đặt trạng thái INVITED để chủ phòng duyệt
+            TripMemberEntity newMember = TripMemberEntity.invite(trip, currentUserId, assignRole);
+            tripMemberRepository.save(newMember);
+        } else {
+            TripMemberEntity existing = existingMemberOpt.get();
+            if (existing.isDel() || existing.getStatus() == TripMemberStatus.LEFT || existing.getStatus() == TripMemberStatus.REMOVED) {
+                existing.reactivate(assignRole, TripMemberStatus.INVITED);
+                tripMemberRepository.save(existing);
+            }
+        }
+
+        return TripResponse.from(trip, hashidsService);
     }
 
     private void validateCreateRequest(CreateTripRequest request) {

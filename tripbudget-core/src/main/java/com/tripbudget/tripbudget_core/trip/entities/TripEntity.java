@@ -45,6 +45,17 @@ public class TripEntity extends BaseEntity {
     @Column(nullable = false, length = 30)
     private TripStatus status;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private com.tripbudget.tripbudget_core.trip.enums.TripVisibility visibility = com.tripbudget.tripbudget_core.trip.enums.TripVisibility.PRIVATE;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "public_role", nullable = false, length = 30)
+    private com.tripbudget.tripbudget_core.trip.enums.TripMemberRole publicRole = com.tripbudget.tripbudget_core.trip.enums.TripMemberRole.VIEWER;
+
+    @Column(name = "share_token", unique = true, length = 64)
+    private String shareToken;
+
     @Version
     @Column(nullable = false)
     private Long version;
@@ -74,8 +85,30 @@ public class TripEntity extends BaseEntity {
 
         // always DRAFT when create trip
         trip.status = TripStatus.DRAFT;
+        trip.visibility = com.tripbudget.tripbudget_core.trip.enums.TripVisibility.PRIVATE;
+        trip.publicRole = com.tripbudget.tripbudget_core.trip.enums.TripMemberRole.VIEWER;
+        trip.shareToken = java.util.UUID.randomUUID().toString().replace("-", "");
 
         return trip;
+    }
+
+    public void updateShareSettings(
+            com.tripbudget.tripbudget_core.trip.enums.TripVisibility visibility,
+            com.tripbudget.tripbudget_core.trip.enums.TripMemberRole publicRole
+    ) {
+        if (visibility != null) {
+            this.visibility = visibility;
+        }
+        if (publicRole != null) {
+            this.publicRole = publicRole;
+        }
+        if (this.shareToken == null || this.shareToken.isBlank()) {
+            this.shareToken = java.util.UUID.randomUUID().toString().replace("-", "");
+        }
+    }
+
+    public void regenerateShareToken() {
+        this.shareToken = java.util.UUID.randomUUID().toString().replace("-", "");
     }
 
     public void update(

@@ -58,16 +58,16 @@ public class TripMemberService {
         TripEntity trip = getActiveTrip(tripId);
         TripMemberEntity caller = getMemberOrThrow(tripId, currentUserId);
 
-        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.EDITOR) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner and editors can invite members");
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner and vice can invite members");
         }
 
         if (req.role() == TripMemberRole.OWNER) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot invite a member with OWNER role");
         }
 
-        if (caller.getRole() == TripMemberRole.EDITOR && req.role() == TripMemberRole.EDITOR) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner can assign EDITOR role");
+        if (caller.getRole() != TripMemberRole.OWNER && (req.role() == TripMemberRole.VICE || req.role() == TripMemberRole.EDITOR)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner can assign VICE role");
         }
 
         String searchEmail = req.email().trim().toLowerCase(Locale.ROOT);
@@ -91,15 +91,38 @@ public class TripMemberService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has already been invited to this trip");
             }
 
-            // Tái kích hoạt lại thành viên từng rời hoặc bị xóa khỏi chuyến đi
-            existing.reactivate(req.role(), TripMemberStatus.ACTIVE);
+            // Tái kích hoạt lại thành viên với trạng thái INVITED để chủ phòng duyệt
+            existing.reactivate(req.role(), TripMemberStatus.INVITED);
             TripMemberEntity saved = tripMemberRepository.save(existing);
             return mapToResponse(saved, targetUser);
         }
 
-        TripMemberEntity newMember = TripMemberEntity.addDirectMember(trip, targetUser.getId(), req.role());
+        TripMemberEntity newMember = TripMemberEntity.invite(trip, targetUser.getId(), req.role());
         TripMemberEntity saved = tripMemberRepository.save(newMember);
         return mapToResponse(saved, targetUser);
+    }
+
+    @Transactional
+    public TripMemberResponse acceptMember(Long currentUserId, Long tripId, Long memberId) {
+        getActiveTrip(tripId);
+        TripMemberEntity caller = getMemberOrThrow(tripId, currentUserId);
+
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the trip owner or vice can approve members");
+        }
+
+        TripMemberEntity targetMember = tripMemberRepository.findByIdAndTrip_IdAndIsDelFalse(memberId, tripId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip member not found"));
+
+        if (targetMember.getStatus() == TripMemberStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Member is already active");
+        }
+
+        targetMember.updateStatus(TripMemberStatus.ACTIVE);
+        TripMemberEntity saved = tripMemberRepository.save(targetMember);
+
+        UserEntity user = userRepository.findById(targetMember.getUserId()).orElse(null);
+        return mapToResponse(saved, user);
     }
 
     @Transactional
@@ -107,8 +130,8 @@ public class TripMemberService {
         getActiveTrip(tripId);
         TripMemberEntity caller = getMemberOrThrow(tripId, currentUserId);
 
-        if (caller.getRole() != TripMemberRole.OWNER) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the trip owner can change member roles");
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the trip owner and vice can change member roles");
         }
 
         TripMemberEntity targetMember = tripMemberRepository.findByIdAndTrip_IdAndIsDelFalse(memberId, tripId)
@@ -120,6 +143,15 @@ public class TripMemberService {
 
         if (req.role() == TripMemberRole.OWNER) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot promote member to OWNER. Ownership transfer is not supported here.");
+        }
+
+        if (caller.getRole() != TripMemberRole.OWNER) {
+            if (targetMember.getRole() == TripMemberRole.VICE || targetMember.getRole() == TripMemberRole.EDITOR) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vice cannot modify another Vice's role");
+            }
+            if (req.role() == TripMemberRole.VICE || req.role() == TripMemberRole.EDITOR) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner can assign Vice role");
+            }
         }
 
         targetMember.updateRole(req.role());
@@ -134,8 +166,8 @@ public class TripMemberService {
         getActiveTrip(tripId);
         TripMemberEntity caller = getMemberOrThrow(tripId, currentUserId);
 
-        if (caller.getRole() != TripMemberRole.OWNER) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the trip owner can remove members");
+        if (caller.getRole() != TripMemberRole.OWNER && caller.getRole() != TripMemberRole.VICE && caller.getRole() != TripMemberRole.EDITOR) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the trip owner and vice can remove members");
         }
 
         TripMemberEntity targetMember = tripMemberRepository.findByIdAndTrip_IdAndIsDelFalse(memberId, tripId)
@@ -147,6 +179,10 @@ public class TripMemberService {
 
         if (targetMember.getUserId().equals(currentUserId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot remove yourself. Use leave trip instead.");
+        }
+
+        if (caller.getRole() != TripMemberRole.OWNER && (targetMember.getRole() == TripMemberRole.VICE || targetMember.getRole() == TripMemberRole.EDITOR)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Vice cannot remove another Vice");
         }
 
         targetMember.remove();

@@ -54,7 +54,7 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error").permitAll()
-//                        .requestMatchers("/api/public/**").permitAll() // this is public endpoint api
+                        .requestMatchers("/public/**", "/api/public/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 // Regis to verify JWT token to header.payload.signature
