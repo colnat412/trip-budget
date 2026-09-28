@@ -4,6 +4,8 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 @Module({
   imports: [
     TypeOrmModule.forRoot({
@@ -18,6 +20,7 @@ dotenv.config();
       logger: 'debug',
       synchronize: false,
       maxQueryExecutionTime: 500,
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
     }),
   ],
 })
