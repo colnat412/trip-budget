@@ -12,6 +12,8 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from 'src/common/redis/redis.service';
 import { JwtService } from '@nestjs/jwt';
 
+import { HashidsService } from '../../common/hashids/hashids.service';
+
 @Injectable()
 export class AuthService {
   private readonly refreshTtlSeconds = 60 * 60 * 24 * 30; // 30 days
@@ -20,6 +22,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly jwtService: JwtService,
+    private readonly hashidsService: HashidsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -40,7 +43,7 @@ export class AuthService {
     });
 
     return {
-      id: user.id,
+      id: this.hashidsService.encode(user.id),
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,
@@ -72,7 +75,7 @@ export class AuthService {
       return {
         ...session,
         user: {
-          id: user.id,
+          id: this.hashidsService.encode(user.id),
           email: user.email,
           name: user.name,
           avatarUrl: user.avatarUrl,
@@ -84,8 +87,13 @@ export class AuthService {
   }
 
   async getProfile(userId: string | number) {
+    const rawId =
+      typeof userId === 'number'
+        ? userId
+        : (this.hashidsService.decode(userId) ?? Number(userId));
+
     const user = await this.usersService.findByCondition({
-      id: Number(userId),
+      id: rawId,
     });
 
     if (!user) {
@@ -93,7 +101,7 @@ export class AuthService {
     }
 
     return {
-      id: user.id,
+      id: this.hashidsService.encode(user.id),
       email: user.email,
       name: user.name,
       avatarUrl: user.avatarUrl,

@@ -9,10 +9,13 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 
+import { HashidsModule } from 'src/common/hashids/hashids.module';
+
 @Module({
   imports: [
     UsersModule,
     PassportModule,
+    HashidsModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

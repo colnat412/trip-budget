@@ -5,6 +5,8 @@ import { AppModules } from './config/modules';
 import { PostgresModule } from './databases/postgres/postgres.module';
 import { HttpLoggerMiddleware } from './common/middlewares/app.middleware';
 
+import { HashidsModule } from './common/hashids/hashids.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -14,6 +16,7 @@ import { HttpLoggerMiddleware } from './common/middlewares/app.middleware';
 
     PostgresModule,
     RedisModule,
+    HashidsModule,
     ...AppModules,
   ],
 })
