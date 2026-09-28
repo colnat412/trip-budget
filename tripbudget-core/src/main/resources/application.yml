@@ -13,6 +13,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL:false}
 
   jpa:
     hibernate:
@@ -33,4 +36,4 @@ hashids:
 server:
   servlet:
     context-path: ${API_BASE_PATH:/api}
-  port: 8081
+  port: ${PORT:8081}
