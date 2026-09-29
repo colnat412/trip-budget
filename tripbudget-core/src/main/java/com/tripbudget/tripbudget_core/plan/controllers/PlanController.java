@@ -105,6 +105,25 @@ public class PlanController {
         ));
     }
 
+    @DeleteMapping("/days/{dayId}/activities")
+    public ResponseEntity<ApiResponse<Void>> resetDayActivities(
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("dayId") String dayIdHash,
+            @CurrentUser CurrentUserDto user
+    ) {
+        Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long dayId = hashidsService.decode(dayIdHash);
+
+        planService.resetDayActivities(currentUserId, tripId, dayId);
+
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK,
+                "Day activities reset successfully",
+                null
+        ));
+    }
+
     @PostMapping("/days/{dayId}/activities")
     public ResponseEntity<ApiResponse<PlanActivityResponse>> createActivity(
             @PathVariable("tripId") String tripIdHash,

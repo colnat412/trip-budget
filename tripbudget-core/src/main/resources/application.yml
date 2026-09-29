@@ -37,3 +37,7 @@ server:
   servlet:
     context-path: ${API_BASE_PATH:/api}
   port: ${PORT:8081}
+
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000}

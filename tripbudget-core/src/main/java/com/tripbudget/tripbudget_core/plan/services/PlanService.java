@@ -306,6 +306,21 @@ public class PlanService {
     }
 
     @Transactional
+    public void resetDayActivities(Long currentUserId, Long tripId, Long dayId) {
+        getActiveMemberTrip(tripId, currentUserId);
+        assertCanEditPlan(tripId, currentUserId);
+
+        planDayRepository.findByIdAndTripIdAndIsDelFalse(dayId, tripId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan day not found"));
+
+        List<PlanActivityEntity> activities = planActivityRepository
+                .findAllByDay_IdAndIsDelFalseOrderByOrderIndexAscStartTimeAsc(dayId);
+        for (PlanActivityEntity act : activities) {
+            act.markDeleted();
+        }
+    }
+
+    @Transactional
     public PlanActivityResponse createActivity(Long currentUserId, Long tripId, Long dayId, CreateActivityRequest request) {
         getActiveMemberTrip(tripId, currentUserId);
         assertCanEditPlan(tripId, currentUserId);
