@@ -1,0 +1,88 @@
+# ==============================================================================
+# PYTHON CORE
+# ==============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ==============================================================================
+# VIRTUAL ENVIRONMENTS
+# ==============================================================================
+# Exclude standard virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Poetry, Pipenv, and Anaconda environments
+.pipenv/
+.pytest_cache/
+.poetry/
+.conda/
+
+# ==============================================================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ==============================================================================
+# Never commit sensitive credentials or local environment configurations
+.env.local
+.env.*
+!.env.example
+*.local
+
+# ==============================================================================
+# TESTING & COVERAGE
+# ==============================================================================
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.asyncio-cache/
+
+# ==============================================================================
+# JUPYTER NOTEBOOKS
+# ==============================================================================
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+
+# ==============================================================================
+# IDEs AND EDITORS (Optional but Recommended)
+# ==============================================================================
+# VS Code
+.vscode/
+
+# PyCharm / IntelliJ
+.idea/
+
+# System specific files
+.DS_Store
+Thumbs.db
