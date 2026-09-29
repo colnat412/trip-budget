@@ -23,10 +23,11 @@ public record PlanActivityResponse(
         Integer orderIndex,
         String note,
         String expenseId,
+        BigDecimal actualSpent,
         Instant createdAt,
         Instant updatedAt
 ) {
-    public static PlanActivityResponse from(PlanActivityEntity entity, HashidsService hashidsService) {
+    public static PlanActivityResponse from(PlanActivityEntity entity, HashidsService hashidsService, BigDecimal actualSpent) {
         return new PlanActivityResponse(
                 hashidsService.encode(entity.getId()),
                 hashidsService.encode(entity.getDay().getId()),
@@ -41,9 +42,14 @@ public record PlanActivityResponse(
                 entity.getOrderIndex(),
                 entity.getNote(),
                 entity.getExpenseId() != null ? hashidsService.encode(entity.getExpenseId()) : null,
+                actualSpent,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
+    }
+
+    public static PlanActivityResponse from(PlanActivityEntity entity, HashidsService hashidsService) {
+        return from(entity, hashidsService, null);
     }
 }
 

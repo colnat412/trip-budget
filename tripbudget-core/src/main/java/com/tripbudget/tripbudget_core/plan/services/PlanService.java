@@ -127,12 +127,11 @@ public class PlanService {
             }
         }
 
-        Set<Long> activeExpenseIds = Collections.emptySet();
+        Map<Long, BigDecimal> activeExpenseAmounts = Collections.emptyMap();
         if (!expenseIds.isEmpty()) {
-            activeExpenseIds = expenseRepository.findAllById(expenseIds).stream()
+            activeExpenseAmounts = expenseRepository.findAllById(expenseIds).stream()
                     .filter(e -> !e.isDel() && e.getStatus() != ExpenseStatus.DELETED)
-                    .map(ExpenseEntity::getId)
-                    .collect(Collectors.toSet());
+                    .collect(Collectors.toMap(ExpenseEntity::getId, ExpenseEntity::getAmount));
         }
 
         List<PlanDayResponse> dayResponses = new ArrayList<>();
@@ -142,15 +141,31 @@ public class PlanService {
             List<PlanActivityResponse> actResponses = new ArrayList<>();
 
             for (PlanActivityEntity act : activities) {
-                if (act.getExpenseId() != null && !activeExpenseIds.contains(act.getExpenseId())) {
-                    act.setExpenseId(null);
-                    if (act.getStatus() == ActivityStatus.COMPLETED) {
-                        act.updateStatus(ActivityStatus.PLANNED);
+                BigDecimal actualSpent = null;
+                if (act.getExpenseId() != null) {
+                    if (!activeExpenseAmounts.containsKey(act.getExpenseId())) {
+                        act.setExpenseId(null);
+                        if (act.getStatus() == ActivityStatus.COMPLETED) {
+                            act.updateStatus(ActivityStatus.PLANNED);
+                        }
+                        planActivityRepository.save(act);
+                    } else {
+                        actualSpent = activeExpenseAmounts.get(act.getExpenseId());
+                        if (act.getEstimatedCost() != null && actualSpent.compareTo(act.getEstimatedCost()) >= 0) {
+                            if (act.getStatus() != ActivityStatus.COMPLETED) {
+                                act.updateStatus(ActivityStatus.COMPLETED);
+                                planActivityRepository.save(act);
+                            }
+                        } else {
+                            if (act.getStatus() == ActivityStatus.COMPLETED) {
+                                act.updateStatus(ActivityStatus.PLANNED);
+                                planActivityRepository.save(act);
+                            }
+                        }
                     }
-                    planActivityRepository.save(act);
                 }
 
-                actResponses.add(PlanActivityResponse.from(act, hashidsService));
+                actResponses.add(PlanActivityResponse.from(act, hashidsService, actualSpent));
                 if (act.getEstimatedCost() != null) {
                     totalEstimatedCost = totalEstimatedCost.add(act.getEstimatedCost());
                 }
@@ -249,9 +264,27 @@ public class PlanService {
 
         List<PlanActivityEntity> activities = planActivityRepository
                 .findAllByDay_IdAndIsDelFalseOrderByOrderIndexAscStartTimeAsc(day.getId());
-        List<PlanActivityResponse> actResponses = activities.stream()
-                .map(a -> PlanActivityResponse.from(a, hashidsService))
-                .toList();
+
+        Set<Long> expenseIds = activities.stream()
+                .filter(a -> a.getExpenseId() != null)
+                .map(PlanActivityEntity::getExpenseId)
+                .collect(Collectors.toSet());
+
+        Map<Long, BigDecimal> activeExpenseAmounts = Collections.emptyMap();
+        if (!expenseIds.isEmpty()) {
+            activeExpenseAmounts = expenseRepository.findAllById(expenseIds).stream()
+                    .filter(e -> !e.isDel() && e.getStatus() != ExpenseStatus.DELETED)
+                    .collect(Collectors.toMap(ExpenseEntity::getId, ExpenseEntity::getAmount));
+        }
+
+        List<PlanActivityResponse> actResponses = new ArrayList<>();
+        for (PlanActivityEntity a : activities) {
+            BigDecimal actualSpent = null;
+            if (a.getExpenseId() != null) {
+                actualSpent = activeExpenseAmounts.get(a.getExpenseId());
+            }
+            actResponses.add(PlanActivityResponse.from(a, hashidsService, actualSpent));
+        }
 
         return PlanDayResponse.from(day, actResponses, hashidsService);
     }
@@ -386,7 +419,14 @@ public class PlanService {
                 desc
         ));
 
-        return PlanActivityResponse.from(activity, hashidsService);
+        BigDecimal actualSpent = null;
+        if (activity.getExpenseId() != null) {
+            actualSpent = expenseRepository.findByIdAndTripIdAndIsDelFalse(activity.getExpenseId(), tripId)
+                    .map(ExpenseEntity::getAmount)
+                    .orElse(null);
+        }
+
+        return PlanActivityResponse.from(activity, hashidsService, actualSpent);
     }
 
     @Transactional
@@ -410,7 +450,14 @@ public class PlanService {
                 "Đổi trạng thái sang: " + statusLabel
         ));
 
-        return PlanActivityResponse.from(activity, hashidsService);
+        BigDecimal actualSpent = null;
+        if (activity.getExpenseId() != null) {
+            actualSpent = expenseRepository.findByIdAndTripIdAndIsDelFalse(activity.getExpenseId(), tripId)
+                    .map(ExpenseEntity::getAmount)
+                    .orElse(null);
+        }
+
+        return PlanActivityResponse.from(activity, hashidsService, actualSpent);
     }
 
     @Transactional
