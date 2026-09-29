@@ -81,6 +81,8 @@ public class TripMemberService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You are already a member of this trip");
         }
 
+        TripMemberStatus initialStatus = caller.getRole() == TripMemberRole.OWNER ? TripMemberStatus.ACTIVE : TripMemberStatus.INVITED;
+
         Optional<TripMemberEntity> existingOpt = tripMemberRepository.findByTrip_IdAndUserId(tripId, targetUser.getId());
         if (existingOpt.isPresent()) {
             TripMemberEntity existing = existingOpt.get();
@@ -91,13 +93,15 @@ public class TripMemberService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User has already been invited to this trip");
             }
 
-            // Tái kích hoạt lại thành viên với trạng thái INVITED để chủ phòng duyệt
-            existing.reactivate(req.role(), TripMemberStatus.INVITED);
+            existing.reactivate(req.role(), initialStatus);
             TripMemberEntity saved = tripMemberRepository.save(existing);
             return mapToResponse(saved, targetUser);
         }
 
-        TripMemberEntity newMember = TripMemberEntity.invite(trip, targetUser.getId(), req.role());
+        TripMemberEntity newMember = caller.getRole() == TripMemberRole.OWNER
+                ? TripMemberEntity.addDirectMember(trip, targetUser.getId(), req.role())
+                : TripMemberEntity.invite(trip, targetUser.getId(), req.role());
+                
         TripMemberEntity saved = tripMemberRepository.save(newMember);
         return mapToResponse(saved, targetUser);
     }
