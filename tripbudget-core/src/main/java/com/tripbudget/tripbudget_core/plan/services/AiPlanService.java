@@ -40,7 +40,7 @@ public class AiPlanService {
     @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
 
-    @Value("${ai.service.api-key}")
+    @Value("${ai.service.api-key:tb_sec_dev_internal_key_2026}")
     private String aiServiceApiKey;
 
     @Transactional
