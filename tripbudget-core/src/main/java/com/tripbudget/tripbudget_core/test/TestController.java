@@ -7,22 +7,15 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 
 @RestController
 @RequestMapping("/test")
 public class TestController {
 
     @GetMapping
-    public ResponseEntity<Map<String, String>> testJwt(
+    public ResponseEntity<String> test(
             @AuthenticationPrincipal Jwt jwt
     ) {
-        return ResponseEntity.ok(
-                Map.of(
-                        "message", "JWT is valid. You can access Travel Core.",
-                        "currentUserId", jwt.getSubject(),
-                        "sessionId", jwt.getClaimAsString("sid")
-                )
-        );
+        return ResponseEntity.ok("Connect Success");
     }
 }
