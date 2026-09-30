@@ -41,3 +41,4 @@ server:
 ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000}
+    api-key: ${AI_SERVICE_API_KEY}

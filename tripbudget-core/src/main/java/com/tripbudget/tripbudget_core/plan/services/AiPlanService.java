@@ -14,7 +14,10 @@ import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import lombok.RequiredArgsConstructor;
 import tools.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
@@ -37,6 +40,9 @@ public class AiPlanService {
     @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
 
+    @Value("${ai.service.api-key}")
+    private String aiServiceApiKey;
+
     @Transactional
     public void generateAndSavePlan(Long currentUserId, Long tripId, AiGeneratePlanRequest request) {
         TripEntity trip = tripRepository.findActiveTrip(tripId);
@@ -58,11 +64,17 @@ public class AiPlanService {
         RestTemplate restTemplate = new RestTemplate();
         String url = aiServiceUrl + "/api/ai/generate-plan";
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Internal-API-Key", aiServiceApiKey);
+        HttpEntity<AiGeneratePlanRequest> httpEntity = new HttpEntity<>(request, headers);
+
         JsonNode responseJson;
         try {
-            responseJson = restTemplate.postForObject(url, request, JsonNode.class);
+            responseJson = restTemplate.postForObject(url, httpEntity, JsonNode.class);
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error connecting to AI Service: " + e.getMessage());
+            System.out.println("Error connecting to AI Service: " + e.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error connecting to AI Service: " );
         }
 
         if (responseJson == null || !responseJson.has("days")) {
