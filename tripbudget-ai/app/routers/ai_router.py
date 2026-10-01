@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Security, UploadFile, File
 from app.schemas.ai_schema import GeneratePlanRequest
 from app.services.ai_service import AIService
 from app.core.security import verify_internal_api_key
+from app.schemas.receipt_schema import ScannedReceiptResponse
+
 
 router = APIRouter(
     prefix="/api/ai",
@@ -21,6 +23,23 @@ async def list_models():
 async def generate_plan(req: GeneratePlanRequest):
     try:
         return ai_service.generate_trip_plan(req)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post(
+    "/scan-receipt",
+    response_model=ScannedReceiptResponse,
+    dependencies=[Security(verify_internal_api_key)]
+)
+async def scan_receipt(file: UploadFile = File(...)):
+    try:
+        image_bytes = await file.read()
+        return ai_service.scan_receipt_image(
+            image_bytes=image_bytes, 
+            mime_type=file.content_type or "image/jpeg"
+        )
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
