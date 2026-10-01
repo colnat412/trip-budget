@@ -40,11 +40,15 @@ public class AiPlanService {
     @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
 
-    @Value("${ai.service.api-key:tb_sec_dev_internal_key_2026}")
+    @Value("${ai.service.api-key:}")
     private String aiServiceApiKey;
 
     @Transactional
     public void generateAndSavePlan(Long currentUserId, Long tripId, AiGeneratePlanRequest request) {
+        if (aiServiceApiKey == null || aiServiceApiKey.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Server configuration error");
+        }
+
         TripEntity trip = tripRepository.findActiveTrip(tripId);
         if (trip == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found");

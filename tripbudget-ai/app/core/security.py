@@ -6,10 +6,13 @@ from fastapi.security import APIKeyHeader
 INTERNAL_API_KEY_HEADER_NAME = "X-Internal-API-Key"
 api_key_header = APIKeyHeader(name=INTERNAL_API_KEY_HEADER_NAME, auto_error=False)
 
-DEFAULT_DEV_INTERNAL_KEY = "tb_sec_dev_internal_key_2026"
-
 def verify_internal_api_key(api_key: str = Security(api_key_header)) -> str:
-    expected_api_key = os.getenv("INTERNAL_API_KEY", DEFAULT_DEV_INTERNAL_KEY)
+    expected_api_key = os.getenv("INTERNAL_API_KEY", "").strip()
+    if not expected_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Server configuration error",
+        )
 
     if not api_key:
         raise HTTPException(
