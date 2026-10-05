@@ -3,15 +3,19 @@ package com.tripbudget.tripbudget_core.trip.controllers;
 import com.tripbudget.tripbudget_core.common.annotations.CurrentUser;
 import com.tripbudget.tripbudget_core.common.dtos.ApiResponse;
 import com.tripbudget.tripbudget_core.common.dtos.CurrentUserDto;
-import com.tripbudget.tripbudget_core.plan.dtos.response.TripPlanOverviewResponse;
-import com.tripbudget.tripbudget_core.plan.services.PlanService;
-import com.tripbudget.tripbudget_core.trip.dtos.response.PublicTripResponse;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PublicTripSnapshot;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PublicTripViewerResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
+import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
+import com.tripbudget.tripbudget_core.trip.services.PublicTripSnapshotService;
 import com.tripbudget.tripbudget_core.trip.services.TripService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/public/trips")
@@ -19,31 +23,36 @@ import org.springframework.web.bind.annotation.*;
 public class PublicTripController {
 
     private final TripService tripService;
-    private final PlanService planService;
+    private final PublicTripSnapshotService publicTripSnapshotService;
 
     @GetMapping("/{token}")
-    public ResponseEntity<ApiResponse<PublicTripResponse>> getPublicTrip(
+    public ResponseEntity<ApiResponse<PublicTripSnapshot>> getPublicTrip(
+            @PathVariable("token") String token
+    ) {
+        PublicTripSnapshot response = publicTripSnapshotService.getSnapshot(token);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.maxAge(Duration.ofSeconds(30))
+                        .sMaxAge(Duration.ofSeconds(60))
+                        .staleWhileRevalidate(Duration.ofMinutes(5))
+                        .cachePublic())
+                .body(ApiResponse.success(
+                        HttpStatus.OK,
+                        "Public trip details retrieved successfully",
+                        response
+                ));
+    }
+
+    @GetMapping("/{token}/me")
+    public ResponseEntity<ApiResponse<PublicTripViewerResponse>> getPublicTripViewer(
             @PathVariable("token") String token,
             @CurrentUser CurrentUserDto user
     ) {
-        Long currentUserId = user != null ? user.id() : null;
-        PublicTripResponse response = tripService.getPublicTrip(token, currentUserId);
+        Long currentUserId = user.id();
+        TripMemberStatus status = tripService.getPublicMemberStatus(token, currentUserId);
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
-                "Public trip details retrieved successfully",
-                response
-        ));
-    }
-
-    @GetMapping("/{token}/plan")
-    public ResponseEntity<ApiResponse<TripPlanOverviewResponse>> getPublicTripPlan(
-            @PathVariable("token") String token
-    ) {
-        TripPlanOverviewResponse response = planService.getPublicTripPlanOverview(token);
-        return ResponseEntity.ok(ApiResponse.success(
-                HttpStatus.OK,
-                "Public trip plan retrieved successfully",
-                response
+                "Viewer status retrieved successfully",
+                new PublicTripViewerResponse(status)
         ));
     }
 

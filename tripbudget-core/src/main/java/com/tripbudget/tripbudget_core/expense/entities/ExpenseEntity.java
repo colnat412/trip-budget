@@ -34,6 +34,9 @@ public class ExpenseEntity extends BaseEntity {
     @Column(name = "payer_id", nullable = false)
     private Long payerId;
 
+    @Column(name = "activity_id")
+    private Long activityId;
+
     @Column(nullable = false, length = 255)
     private String title;
 
@@ -81,7 +84,8 @@ public class ExpenseEntity extends BaseEntity {
             LocalDate expenseDate,
             SplitType splitType,
             String note,
-            String receiptUrl
+            String receiptUrl,
+            Long activityId
     ) {
         ExpenseEntity expense = new ExpenseEntity();
         expense.tripId = tripId;
@@ -95,7 +99,23 @@ public class ExpenseEntity extends BaseEntity {
         expense.status = ExpenseStatus.CONFIRMED;
         expense.note = note != null && !note.isBlank() ? note.trim() : null;
         expense.receiptUrl = receiptUrl != null && !receiptUrl.isBlank() ? receiptUrl.trim() : null;
+        expense.activityId = activityId;
         return expense;
+    }
+
+    public static ExpenseEntity create(
+            Long tripId,
+            Long payerId,
+            String title,
+            ExpenseCategory category,
+            BigDecimal amount,
+            String currency,
+            LocalDate expenseDate,
+            SplitType splitType,
+            String note,
+            String receiptUrl
+    ) {
+        return create(tripId, payerId, title, category, amount, currency, expenseDate, splitType, note, receiptUrl, null);
     }
 
     public void update(
@@ -107,7 +127,8 @@ public class ExpenseEntity extends BaseEntity {
             LocalDate expenseDate,
             SplitType splitType,
             String note,
-            String receiptUrl
+            String receiptUrl,
+            Long activityId
     ) {
         if (payerId != null) {
             this.payerId = payerId;
@@ -132,6 +153,27 @@ public class ExpenseEntity extends BaseEntity {
         }
         this.note = note != null && !note.isBlank() ? note.trim() : null;
         this.receiptUrl = receiptUrl != null && !receiptUrl.isBlank() ? receiptUrl.trim() : null;
+        if (activityId != null) {
+            this.activityId = activityId;
+        }
+    }
+
+    public void update(
+            Long payerId,
+            String title,
+            ExpenseCategory category,
+            BigDecimal amount,
+            String currency,
+            LocalDate expenseDate,
+            SplitType splitType,
+            String note,
+            String receiptUrl
+    ) {
+        update(payerId, title, category, amount, currency, expenseDate, splitType, note, receiptUrl, null);
+    }
+
+    public void setActivityId(Long activityId) {
+        this.activityId = activityId;
     }
 
     public void update(

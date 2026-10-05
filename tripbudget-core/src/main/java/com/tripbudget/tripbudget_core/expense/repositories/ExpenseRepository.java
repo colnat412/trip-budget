@@ -46,5 +46,14 @@ public interface ExpenseRepository extends JpaRepository<ExpenseEntity, Long>, J
             @Param("tripId") Long tripId,
             @Param("status") ExpenseStatus status
     );
+
+    @Query("SELECT e.activityId, COALESCE(SUM(e.amount), 0) FROM ExpenseEntity e " +
+           "WHERE e.tripId = :tripId AND e.activityId IS NOT NULL AND e.status <> com.tripbudget.tripbudget_core.expense.enums.ExpenseStatus.DELETED AND e.isDel = false " +
+           "GROUP BY e.activityId")
+    List<Object[]> sumAmountByTripIdAndActivityGrouped(@Param("tripId") Long tripId);
+
+    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM ExpenseEntity e " +
+           "WHERE e.tripId = :tripId AND e.activityId = :activityId AND e.status <> com.tripbudget.tripbudget_core.expense.enums.ExpenseStatus.DELETED AND e.isDel = false")
+    BigDecimal sumAmountByActivityId(@Param("tripId") Long tripId, @Param("activityId") Long activityId);
 }
 

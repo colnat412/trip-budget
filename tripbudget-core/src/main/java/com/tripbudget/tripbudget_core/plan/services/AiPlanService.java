@@ -11,7 +11,9 @@ import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
+import com.tripbudget.tripbudget_core.trip.events.PublicTripChangedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import tools.jackson.databind.JsonNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -36,6 +38,7 @@ public class AiPlanService {
     private final TripMemberRepository tripMemberRepository;
     private final PlanDayRepository planDayRepository;
     private final PlanActivityRepository planActivityRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Value("${ai.service.url:http://localhost:8000}")
     private String aiServiceUrl;
@@ -129,5 +132,7 @@ public class AiPlanService {
                 }
             }
         }
+
+        eventPublisher.publishEvent(PublicTripChangedEvent.of(tripId));
     }
 }

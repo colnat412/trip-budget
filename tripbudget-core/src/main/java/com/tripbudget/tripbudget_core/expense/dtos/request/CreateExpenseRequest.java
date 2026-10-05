@@ -34,6 +34,8 @@ public record CreateExpenseRequest(
 
         String payerId,
 
+        String activityId,
+
         List<SplitItemRequest> splits
 ) {}
 

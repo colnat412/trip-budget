@@ -36,7 +36,7 @@ public class ExpenseSplitEntity extends BaseEntity {
     @Column(name = "allocated_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal allocatedAmount;
 
-    @Column(name = "split_value", precision = 10, scale = 4)
+    @Column(name = "split_value", precision = 18, scale = 4)
     private BigDecimal splitValue;
 
     @Column(nullable = false)

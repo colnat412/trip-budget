@@ -25,6 +25,7 @@ public record ExpenseResponse(
         ExpenseStatus status,
         String note,
         String receiptUrl,
+        String activityId,
         Instant createdAt,
         Instant updatedAt,
         List<ExpenseSplitResponse> splits

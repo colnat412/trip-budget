@@ -22,7 +22,9 @@ public record PlanActivityResponse(
         ActivityStatus status,
         Integer orderIndex,
         String note,
+        // null in the public view.
         String expenseId,
+        // null when unlinked or in the public view.
         BigDecimal actualSpent,
         Instant createdAt,
         Instant updatedAt
@@ -50,6 +52,17 @@ public record PlanActivityResponse(
 
     public static PlanActivityResponse from(PlanActivityEntity entity, HashidsService hashidsService) {
         return from(entity, hashidsService, null);
+    }
+
+    public static PlanActivityResponse publicFrom(PlanActivityEntity entity, HashidsService hashidsService) {
+        PlanActivityResponse full = from(entity, hashidsService, null);
+        return new PlanActivityResponse(
+                full.id(), full.dayId(), full.tripId(), full.title(),
+                full.startTime(), full.endTime(), full.location(), full.category(),
+                full.estimatedCost(), full.status(), full.orderIndex(), full.note(),
+                null, null,
+                full.createdAt(), full.updatedAt()
+        );
     }
 }
 

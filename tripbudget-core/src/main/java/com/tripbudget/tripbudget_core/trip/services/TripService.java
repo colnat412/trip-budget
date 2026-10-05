@@ -8,7 +8,6 @@ import com.tripbudget.tripbudget_core.trip.dtos.request.TripFilterRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateShareSettingsRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.request.UpdateTripRequest;
 import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
-import com.tripbudget.tripbudget_core.trip.dtos.response.PublicTripResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripResponse;
 import com.tripbudget.tripbudget_core.trip.dtos.response.TripShareResponse;
 import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
@@ -17,9 +16,11 @@ import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
 import com.tripbudget.tripbudget_core.trip.enums.TripStatus;
 import com.tripbudget.tripbudget_core.trip.enums.TripVisibility;
+import com.tripbudget.tripbudget_core.trip.events.PublicTripChangedEvent;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import com.tripbudget.tripbudget_core.trip.specifications.TripSpecifications;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -39,24 +40,27 @@ public class TripService {
     private final TripRepository tripRepository;
     private final TripMemberRepository tripMemberRepository;
     private final HashidsService hashidsService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public TripService(
             TripRepository tripRepository,
             TripMemberRepository tripMemberRepository,
-            HashidsService hashidsService
+            HashidsService hashidsService,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.tripRepository = tripRepository;
         this.tripMemberRepository = tripMemberRepository;
         this.hashidsService = hashidsService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
     public TripResponse createTrip(Long currentUserId, CreateTripRequest dto){
-            // validate dto
             validateCreateRequest(dto);
 
             TripEntity trip = TripEntity.create(
-                    currentUserId,dto.getName(),
+                    currentUserId,
+                    dto.getName(),
                     dto.getDestination(),
                     dto.getDescription(),
                     dto.getStartDate(),
@@ -171,6 +175,7 @@ public class TripService {
                 dto.getStatus()
         );
 
+        eventPublisher.publishEvent(PublicTripChangedEvent.of(tripId));
         return TripResponse.from(trip, hashidsService);
     }
 
@@ -192,6 +197,7 @@ public class TripService {
         }
 
         trip.deleteTrip();
+        eventPublisher.publishEvent(new PublicTripChangedEvent(tripId, trip.getShareToken()));
 //        tripRepository.delete(trip);
     }
 
@@ -252,6 +258,7 @@ public class TripService {
 
         TripMemberRole role = dto.publicRole() != null ? dto.publicRole() : TripMemberRole.VIEWER;
         trip.updateShareSettings(dto.visibility(), role);
+        eventPublisher.publishEvent(PublicTripChangedEvent.of(tripId));
 
         return new TripShareResponse(
                 hashidsService.encode(trip.getId()),
@@ -272,7 +279,9 @@ public class TripService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only trip owner and vice can regenerate share link");
         }
 
+        String oldShareToken = trip.getShareToken();
         trip.regenerateShareToken();
+        eventPublisher.publishEvent(new PublicTripChangedEvent(tripId, oldShareToken));
 
         return new TripShareResponse(
                 hashidsService.encode(trip.getId()),
@@ -282,7 +291,7 @@ public class TripService {
         );
     }
 
-    public PublicTripResponse getPublicTrip(String shareToken, Long currentUserId) {
+    public TripMemberStatus getPublicMemberStatus(String shareToken, Long currentUserId) {
         TripEntity trip = tripRepository.findByShareTokenAndIsDelFalse(shareToken)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found or link has expired"));
 
@@ -290,18 +299,13 @@ public class TripService {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This trip is private. Only members can view it.");
         }
 
-        TripMemberStatus userStatus = null;
-        if (currentUserId != null) {
-            if (currentUserId.equals(trip.getOwnerId())) {
-                userStatus = TripMemberStatus.ACTIVE;
-            } else {
-                userStatus = tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(trip.getId(), currentUserId)
-                        .map(TripMemberEntity::getStatus)
-                        .orElse(null);
-            }
+        if (currentUserId.equals(trip.getOwnerId())) {
+            return TripMemberStatus.ACTIVE;
         }
 
-        return PublicTripResponse.from(trip, userStatus);
+        return tripMemberRepository.findByTrip_IdAndUserIdAndIsDelFalse(trip.getId(), currentUserId)
+                .map(TripMemberEntity::getStatus)
+                .orElse(null);
     }
 
     @Transactional
@@ -317,7 +321,7 @@ public class TripService {
         TripMemberRole assignRole = trip.getPublicRole() != null ? trip.getPublicRole() : TripMemberRole.VIEWER;
 
         if (existingMemberOpt.isEmpty()) {
-            // Khi tham gia qua link, đặt trạng thái INVITED để chủ phòng duyệt
+            // When joining via the link, set status INVITED so the trip owner can approve it
             TripMemberEntity newMember = TripMemberEntity.invite(trip, currentUserId, assignRole);
             tripMemberRepository.save(newMember);
         } else {

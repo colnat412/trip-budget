@@ -66,6 +66,9 @@ public class ExpenseService {
 
         LocalDate expenseDate = req.expenseDate() != null ? req.expenseDate() : LocalDate.now();
         SplitType splitType = req.splitType() != null ? req.splitType() : SplitType.EQUAL;
+        Long activityId = (req.activityId() != null && !req.activityId().isBlank())
+                ? hashidsService.decode(req.activityId())
+                : null;
 
         ExpenseEntity expense = ExpenseEntity.create(
                 tripId,
@@ -77,7 +80,8 @@ public class ExpenseService {
                 expenseDate,
                 splitType,
                 req.note(),
-                req.receiptUrl()
+                req.receiptUrl(),
+                activityId
         );
 
         applyExpenseSplits(expense, req.amount(), splitType, req.splits(), payerId, tripId, currentUserId);
@@ -190,6 +194,10 @@ public class ExpenseService {
         boolean amountChanged = req.amount() != null && req.amount().compareTo(oldAmount) != 0;
         boolean splitTypeChanged = req.splitType() != null && req.splitType() != oldSplitType;
 
+        Long activityId = (req.activityId() != null && !req.activityId().isBlank())
+                ? hashidsService.decode(req.activityId())
+                : expense.getActivityId();
+
         expense.update(
                 payerId,
                 req.title() != null ? req.title() : expense.getTitle(),
@@ -199,7 +207,8 @@ public class ExpenseService {
                 req.expenseDate() != null ? req.expenseDate() : expense.getExpenseDate(),
                 newSplitType,
                 req.note(),
-                req.receiptUrl()
+                req.receiptUrl(),
+                activityId
         );
 
         if (req.splits() != null && !req.splits().isEmpty()) {
@@ -225,8 +234,28 @@ public class ExpenseService {
         expense.deleteExpense();
         expenseRepository.save(expense);
 
+        if (expense.getActivityId() != null) {
+            planActivityRepository.findByIdAndTripIdAndIsDelFalse(expense.getActivityId(), tripId).ifPresent(activity -> {
+                BigDecimal remainingSpent = expenseRepository.sumAmountByActivityId(tripId, activity.getId());
+                if (remainingSpent == null || remainingSpent.compareTo(BigDecimal.ZERO) == 0) {
+                    activity.setExpenseId(null);
+                    if (activity.getStatus() == ActivityStatus.COMPLETED) {
+                        activity.updateStatus(ActivityStatus.PLANNED);
+                    }
+                } else if (activity.getEstimatedCost() != null && remainingSpent.compareTo(activity.getEstimatedCost()) < 0) {
+                    if (activity.getStatus() == ActivityStatus.COMPLETED) {
+                        activity.updateStatus(ActivityStatus.PLANNED);
+                    }
+                }
+                planActivityRepository.save(activity);
+            });
+        }
+
         List<PlanActivityEntity> linkedActivities = planActivityRepository.findAllByExpenseIdAndIsDelFalse(expenseId);
         for (PlanActivityEntity activity : linkedActivities) {
+            if (expense.getActivityId() != null && expense.getActivityId().equals(activity.getId())) {
+                continue; // already handled above
+            }
             activity.setExpenseId(null);
             if (activity.getStatus() == ActivityStatus.COMPLETED) {
                 activity.updateStatus(ActivityStatus.PLANNED);
@@ -554,6 +583,7 @@ public class ExpenseService {
                 entity.getStatus(),
                 entity.getNote(),
                 entity.getReceiptUrl(),
+                entity.getActivityId() != null ? hashidsService.encode(entity.getActivityId()) : null,
                 entity.getCreatedAt(),
                 entity.getUpdatedAt(),
                 splitResponses

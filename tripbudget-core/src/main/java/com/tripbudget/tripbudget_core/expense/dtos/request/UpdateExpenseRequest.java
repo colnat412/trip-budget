@@ -34,6 +34,8 @@ public record UpdateExpenseRequest(
 
         String payerId,
 
+        String activityId,
+
         List<SplitItemRequest> splits
 ) {}
 

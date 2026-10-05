@@ -20,12 +20,13 @@ import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
-import com.tripbudget.tripbudget_core.trip.enums.TripVisibility;
+import com.tripbudget.tripbudget_core.trip.events.PublicTripChangedEvent;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
 import com.tripbudget.tripbudget_core.user.entities.UserEntity;
 import com.tripbudget.tripbudget_core.user.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +52,7 @@ public class PlanService {
     private final TripMemberRepository tripMemberRepository;
     private final UserRepository userRepository;
     private final HashidsService hashidsService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private TripEntity getActiveMemberTrip(Long tripId, Long currentUserId) {
         TripEntity trip = tripRepository.findActiveTrip(tripId);
@@ -90,16 +92,48 @@ public class PlanService {
         return buildTripPlanOverview(trip);
     }
 
-    @Transactional
-    public TripPlanOverviewResponse getPublicTripPlanOverview(String shareToken) {
-        TripEntity trip = tripRepository.findByShareTokenAndIsDelFalse(shareToken)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Trip not found or link has expired"));
+    public TripPlanOverviewResponse buildPublicPlanOverview(TripEntity trip) {
+        Long tripId = trip.getId();
+        List<PlanDayEntity> days = planDayRepository.findAllByTripIdAndIsDelFalseOrderByDayNumberAsc(tripId);
 
-        if (trip.getVisibility() != TripVisibility.PUBLIC) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "This trip is private. Only members can view it.");
+        BigDecimal totalEstimatedCost = BigDecimal.ZERO;
+        int totalActivities = 0;
+        int completedActivities = 0;
+        List<PlanDayResponse> dayResponses = new ArrayList<>();
+
+        for (PlanDayEntity day : days) {
+            List<PlanActivityResponse> actResponses = new ArrayList<>();
+            for (PlanActivityEntity act : planActivityRepository.findAllByDayIdSorted(day.getId())) {
+                actResponses.add(PlanActivityResponse.publicFrom(act, hashidsService));
+                if (act.getEstimatedCost() != null) {
+                    totalEstimatedCost = totalEstimatedCost.add(act.getEstimatedCost());
+                }
+                totalActivities++;
+                if (act.getStatus() == ActivityStatus.COMPLETED) {
+                    completedActivities++;
+                }
+            }
+            dayResponses.add(PlanDayResponse.from(day, actResponses, hashidsService));
         }
 
-        return buildTripPlanOverview(trip);
+        return new TripPlanOverviewResponse(
+                hashidsService.encode(tripId),
+                trip.getName(),
+                trip.getDestination(),
+                trip.getStartDate(),
+                trip.getEndDate(),
+                trip.getBaseCurrency(),
+                dayResponses.size(),
+                totalEstimatedCost,
+                totalActivities,
+                completedActivities,
+                dayResponses,
+                Collections.emptyList()
+        );
+    }
+
+    private void publishPublicTripChanged(Long tripId) {
+        eventPublisher.publishEvent(PublicTripChangedEvent.of(tripId));
     }
 
     private TripPlanOverviewResponse buildTripPlanOverview(TripEntity trip) {
@@ -127,6 +161,16 @@ public class PlanService {
             }
         }
 
+        Map<Long, BigDecimal> activitySpentMap = new HashMap<>();
+        List<Object[]> grouped = expenseRepository.sumAmountByTripIdAndActivityGrouped(tripId);
+        for (Object[] row : grouped) {
+            Long actId = (Long) row[0];
+            BigDecimal sum = (BigDecimal) row[1];
+            if (actId != null && sum != null) {
+                activitySpentMap.put(actId, sum);
+            }
+        }
+
         Map<Long, BigDecimal> activeExpenseAmounts = Collections.emptyMap();
         if (!expenseIds.isEmpty()) {
             activeExpenseAmounts = expenseRepository.findAllById(expenseIds).stream()
@@ -141,26 +185,27 @@ public class PlanService {
             List<PlanActivityResponse> actResponses = new ArrayList<>();
 
             for (PlanActivityEntity act : activities) {
-                BigDecimal actualSpent = null;
-                if (act.getExpenseId() != null) {
-                    if (!activeExpenseAmounts.containsKey(act.getExpenseId())) {
-                        act.setExpenseId(null);
-                        if (act.getStatus() == ActivityStatus.COMPLETED) {
-                            act.updateStatus(ActivityStatus.PLANNED);
+                BigDecimal actualSpent = activitySpentMap.get(act.getId());
+                if (actualSpent == null && act.getExpenseId() != null) {
+                    actualSpent = activeExpenseAmounts.get(act.getExpenseId());
+                }
+
+                if (act.getExpenseId() != null && !activeExpenseAmounts.containsKey(act.getExpenseId()) && (actualSpent == null || actualSpent.compareTo(BigDecimal.ZERO) == 0)) {
+                    act.setExpenseId(null);
+                    if (act.getStatus() == ActivityStatus.COMPLETED) {
+                        act.updateStatus(ActivityStatus.PLANNED);
+                    }
+                    planActivityRepository.save(act);
+                } else if (actualSpent != null && actualSpent.compareTo(BigDecimal.ZERO) > 0) {
+                    if (act.getEstimatedCost() != null && actualSpent.compareTo(act.getEstimatedCost()) >= 0) {
+                        if (act.getStatus() != ActivityStatus.COMPLETED) {
+                            act.updateStatus(ActivityStatus.COMPLETED);
+                            planActivityRepository.save(act);
                         }
-                        planActivityRepository.save(act);
                     } else {
-                        actualSpent = activeExpenseAmounts.get(act.getExpenseId());
-                        if (act.getEstimatedCost() != null && actualSpent.compareTo(act.getEstimatedCost()) >= 0) {
-                            if (act.getStatus() != ActivityStatus.COMPLETED) {
-                                act.updateStatus(ActivityStatus.COMPLETED);
-                                planActivityRepository.save(act);
-                            }
-                        } else {
-                            if (act.getStatus() == ActivityStatus.COMPLETED) {
-                                act.updateStatus(ActivityStatus.PLANNED);
-                                planActivityRepository.save(act);
-                            }
+                        if (act.getStatus() == ActivityStatus.COMPLETED && act.getEstimatedCost() != null && act.getEstimatedCost().compareTo(BigDecimal.ZERO) > 0) {
+                            act.updateStatus(ActivityStatus.PLANNED);
+                            planActivityRepository.save(act);
                         }
                     }
                 }
@@ -250,6 +295,7 @@ public class PlanService {
         );
 
         PlanDayEntity saved = planDayRepository.save(day);
+        publishPublicTripChanged(tripId);
         return PlanDayResponse.from(saved, Collections.emptyList(), hashidsService);
     }
 
@@ -270,6 +316,16 @@ public class PlanService {
                 .map(PlanActivityEntity::getExpenseId)
                 .collect(Collectors.toSet());
 
+        Map<Long, BigDecimal> activitySpentMap = new HashMap<>();
+        List<Object[]> grouped = expenseRepository.sumAmountByTripIdAndActivityGrouped(tripId);
+        for (Object[] row : grouped) {
+            Long actId = (Long) row[0];
+            BigDecimal sum = (BigDecimal) row[1];
+            if (actId != null && sum != null) {
+                activitySpentMap.put(actId, sum);
+            }
+        }
+
         Map<Long, BigDecimal> activeExpenseAmounts = Collections.emptyMap();
         if (!expenseIds.isEmpty()) {
             activeExpenseAmounts = expenseRepository.findAllById(expenseIds).stream()
@@ -279,13 +335,14 @@ public class PlanService {
 
         List<PlanActivityResponse> actResponses = new ArrayList<>();
         for (PlanActivityEntity a : activities) {
-            BigDecimal actualSpent = null;
-            if (a.getExpenseId() != null) {
+            BigDecimal actualSpent = activitySpentMap.get(a.getId());
+            if (actualSpent == null && a.getExpenseId() != null) {
                 actualSpent = activeExpenseAmounts.get(a.getExpenseId());
             }
             actResponses.add(PlanActivityResponse.from(a, hashidsService, actualSpent));
         }
 
+        publishPublicTripChanged(tripId);
         return PlanDayResponse.from(day, actResponses, hashidsService);
     }
 
@@ -303,6 +360,7 @@ public class PlanService {
         for (PlanActivityEntity act : activities) {
             act.markDeleted();
         }
+        publishPublicTripChanged(tripId);
     }
 
     @Transactional
@@ -318,6 +376,7 @@ public class PlanService {
         for (PlanActivityEntity act : activities) {
             act.markDeleted();
         }
+        publishPublicTripChanged(tripId);
     }
 
     @Transactional
@@ -368,6 +427,7 @@ public class PlanService {
                 desc
         ));
 
+        publishPublicTripChanged(tripId);
         return PlanActivityResponse.from(saved, hashidsService);
     }
 
@@ -434,13 +494,9 @@ public class PlanService {
                 desc
         ));
 
-        BigDecimal actualSpent = null;
-        if (activity.getExpenseId() != null) {
-            actualSpent = expenseRepository.findByIdAndTripIdAndIsDelFalse(activity.getExpenseId(), tripId)
-                    .map(ExpenseEntity::getAmount)
-                    .orElse(null);
-        }
+        publishPublicTripChanged(tripId);
 
+        BigDecimal actualSpent = resolveActualSpent(tripId, activity);
         return PlanActivityResponse.from(activity, hashidsService, actualSpent);
     }
 
@@ -465,14 +521,23 @@ public class PlanService {
                 "Đổi trạng thái sang: " + statusLabel
         ));
 
-        BigDecimal actualSpent = null;
+        publishPublicTripChanged(tripId);
+
+        BigDecimal actualSpent = resolveActualSpent(tripId, activity);
+        return PlanActivityResponse.from(activity, hashidsService, actualSpent);
+    }
+
+    private BigDecimal resolveActualSpent(Long tripId, PlanActivityEntity activity) {
+        BigDecimal sum = expenseRepository.sumAmountByActivityId(tripId, activity.getId());
+        if (sum != null && sum.compareTo(BigDecimal.ZERO) > 0) {
+            return sum;
+        }
         if (activity.getExpenseId() != null) {
-            actualSpent = expenseRepository.findByIdAndTripIdAndIsDelFalse(activity.getExpenseId(), tripId)
+            return expenseRepository.findByIdAndTripIdAndIsDelFalse(activity.getExpenseId(), tripId)
                     .map(ExpenseEntity::getAmount)
                     .orElse(null);
         }
-
-        return PlanActivityResponse.from(activity, hashidsService, actualSpent);
+        return null;
     }
 
     @Transactional
@@ -494,6 +559,7 @@ public class PlanService {
                 activity.getTitle(),
                 "Đã xóa hoạt động \"" + activity.getTitle() + "\" khỏi lịch trình"
         ));
+        publishPublicTripChanged(tripId);
     }
 
     @Transactional(readOnly = true)
