@@ -18,22 +18,31 @@ export class UsersService {
       return this.userRepository.findOne({ where: condition });
     } catch (error) {
       throw new Error(
-        `Failed to find user by ${JSON.stringify(condition)}: ${error.message}`,
+        `Failed to find user by ${JSON.stringify(condition)}: ${error}`,
       );
     }
   }
 
   async create(dto: RegisterDto): Promise<UserEntity> {
-    const { email, password, name } = dto;
+    const { email, password, name, status } = dto;
     try {
       const user = this.userRepository.create({
         email,
         password,
         name,
+        status,
       });
       return this.userRepository.save(user);
     } catch (error) {
-      throw new Error(`Failed to create user: ${error.message}`);
+      throw new Error(`Failed to create user: ${error}`);
+    }
+  }
+
+  async save(user: Partial<UserEntity>): Promise<UserEntity> {
+    try {
+      return this.userRepository.save(user);
+    } catch (error) {
+      throw new Error(`Failed to save user: ${error}`);
     }
   }
 }

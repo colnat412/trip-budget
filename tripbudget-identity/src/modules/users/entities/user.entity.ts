@@ -9,7 +9,7 @@ export class UserEntity {
   @Column()
   email: string;
 
-  @Column({ name: 'password' })
+  @Column({ name: 'password', nullable: true })
   password: string;
 
   @Column()

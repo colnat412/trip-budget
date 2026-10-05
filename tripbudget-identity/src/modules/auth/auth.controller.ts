@@ -8,7 +8,12 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dtos/auto.dto';
+import {
+  GoogleLoginDto,
+  RegisterDto,
+  ResendOtpDto,
+  VerifyOtpDto,
+} from './dtos/auto.dto';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { Public } from './decorators/public.decorator';
@@ -19,6 +24,44 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
   ) {}
+
+  @Public()
+  @Post('verify-otp')
+  async verifyOtp(
+    @Body() dto: VerifyOtpDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const result = await this.authService.verifyOtp(dto);
+      this.setRefreshCookie(response, result.refreshToken);
+      return { accessToken: result.accessToken, user: result.user };
+    } catch (error) {
+      console.log('Error', error);
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('resend-otp')
+  async resendOtp(@Body() dto: ResendOtpDto) {
+    try {
+      return this.authService.resendOtp(dto);
+    } catch (error) {
+      console.log('Error', error);
+      throw error;
+    }
+  }
+
+  @Public()
+  @Post('google')
+  async loginWithGoogle(
+    @Body() dto: GoogleLoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.loginWithGoogle(dto);
+    this.setRefreshCookie(response, result.refreshToken);
+    return { accessToken: result.accessToken, user: result.user };
+  }
 
   @Public()
   @Post('register')
@@ -102,12 +145,10 @@ export class AuthController {
   private setRefreshCookie(response: Response, refreshToken: string) {
     response.cookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: this.config.get<string>('COOKIE_SECURE') === 'true',
+      secure: process.env.COOKIE_SECURE === 'true',
       sameSite: 'lax',
       path: '/api/auth',
-      maxAge:
-        Number(this.config.getOrThrow<string>('REFRESH_TOKEN_TTL_SECONDS')) *
-        1000,
+      maxAge: Number(process.env.REFRESH_TOKEN_TTL_SECONDS) * 1000,
     });
   }
 }

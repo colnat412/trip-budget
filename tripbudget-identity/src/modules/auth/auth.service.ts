@@ -6,13 +6,22 @@ import {
 import * as bcrypt from 'bcrypt';
 import { UserStatusEnum } from 'src/config/enums/user.enum';
 import { UsersService } from '../users/users.service';
-import { LoginDto, RegisterDto, SessionData } from './dtos/auto.dto';
+import {
+  GoogleLoginDto,
+  LoginDto,
+  RegisterDto,
+  ResendOtpDto,
+  SessionData,
+  VerifyOtpDto,
+} from './dtos/auto.dto';
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from 'src/common/redis/redis.service';
 import { JwtService } from '@nestjs/jwt';
 
 import { HashidsService } from '../../common/hashids/hashids.service';
+import { MailerService } from 'src/common/mailer/mailer.service';
+import { OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
@@ -23,31 +32,109 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly jwtService: JwtService,
     private readonly hashidsService: HashidsService,
+    private readonly mailerService: MailerService,
   ) {}
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
 
-    const existedUser = await this.usersService.findByCondition({ email });
+    let user = await this.usersService.findByCondition({ email });
 
-    if (existedUser) {
+    if (user && user.status === UserStatusEnum.ACTIVE) {
       throw new ConflictException('Email already exists');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.usersService.create({
-      email,
-      name: dto.name.trim(),
-      password: passwordHash,
-    });
+    if (!user) {
+      user = await this.usersService.create({
+        email,
+        name: dto.name.trim(),
+        password: passwordHash,
+        status: UserStatusEnum.INACTIVE,
+      });
+    } else {
+      user.name = dto.name.trim();
+      user.password = passwordHash;
+      await this.usersService.save(user);
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await this.redis.redisClient.set(`otp:verify:${email}`, otp, 'EX', 300);
+
+    await this.mailerService.sendOtpEmail(email, otp, user.name);
 
     return {
-      id: this.hashidsService.encode(user.id),
+      success: true,
       email: user.email,
-      name: user.name,
-      avatarUrl: user.avatarUrl,
+      message: 'OTP has been sent to your email.',
     };
+  }
+
+  async verifyOtp(dto: VerifyOtpDto) {
+    try {
+      const email = dto.email.trim().toLowerCase();
+      const cachedOtp = await this.redis.redisClient.get(`otp:verify:${email}`);
+      if (!cachedOtp || cachedOtp !== dto.otp) {
+        throw new UnauthorizedException('Invalid OTP');
+      }
+
+      const user = await this.usersService.findByCondition({ email });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      user.status = UserStatusEnum.ACTIVE;
+      await this.usersService.save(user);
+
+      await this.redis.redisClient.del(`otp:verify:${email}`);
+
+      const session = await this.createSession(user.id);
+      return {
+        ...session,
+        user: {
+          id: this.hashidsService.encode(user.id),
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+        },
+      };
+    } catch (error) {
+      console.log('Verify OTP Error', error);
+      throw new UnauthorizedException('Invalid OTP');
+    }
+  }
+
+  async resendOtp(dto: ResendOtpDto) {
+    try {
+      const email = dto.email.trim().toLowerCase();
+
+      const user = await this.usersService.findByCondition({ email });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      if (user.status === UserStatusEnum.ACTIVE) {
+        throw new ConflictException('Account is already active');
+      }
+
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      await this.redis.redisClient.set(`otp:verify:${email}`, otp, 'EX', 300);
+
+      await this.mailerService.sendOtpEmail(email, otp, user.name);
+
+      return {
+        success: true,
+        email: user.email,
+        message: 'OTP has been resent to your email.',
+      };
+    } catch (error) {
+      console.log('Resend OTP Error', error);
+      throw new UnauthorizedException('Failed to resend OTP');
+    }
   }
 
   async login(dto: LoginDto) {
@@ -82,7 +169,91 @@ export class AuthService {
         },
       };
     } catch (error) {
+      console.log('Login error', error);
       throw new UnauthorizedException('Email or password is not valid');
+    }
+  }
+
+  async loginWithGoogle(dto: GoogleLoginDto) {
+    try {
+      let payload:
+        { email?: string; name?: string; picture?: string } | undefined;
+
+      const isIdToken =
+        dto.credential.includes('.') && dto.credential.split('.').length === 3;
+
+      if (isIdToken) {
+        const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+        const ticket = await client.verifyIdToken({
+          idToken: dto.credential,
+          audience: process.env.GOOGLE_CLIENT_ID,
+        });
+
+        payload = ticket.getPayload();
+      } else {
+        const response = await fetch(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          {
+            headers: {
+              Authorization: `Bearer ${dto.credential}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          throw new UnauthorizedException('Invalid Google access token');
+        }
+
+        payload = (await response.json()) as {
+          email?: string;
+          name?: string;
+          picture?: string;
+        };
+      }
+
+      if (!payload || !payload.email) {
+        throw new UnauthorizedException('Invalid Google credential');
+      }
+      const email = payload.email.toLowerCase();
+
+      let user = await this.usersService.findByCondition({ email });
+
+      if (!user) {
+        user = await this.usersService.save({
+          email,
+          name: payload.name || email.split('@')[0],
+          avatarUrl: payload.picture,
+          status: UserStatusEnum.ACTIVE,
+        });
+      } else {
+        let isChanged = false;
+        if (payload.picture && !user.avatarUrl) {
+          user.avatarUrl = payload.picture;
+          isChanged = true;
+        }
+        if (user.status !== UserStatusEnum.ACTIVE) {
+          user.status = UserStatusEnum.ACTIVE;
+          isChanged = true;
+        }
+        if (isChanged) {
+          await this.usersService.save(user);
+        }
+      }
+
+      const session = await this.createSession(user.id);
+      return {
+        ...session,
+        user: {
+          id: this.hashidsService.encode(user.id),
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+        },
+      };
+    } catch (error) {
+      console.log('Google login error', error);
+      throw new UnauthorizedException('Failed to login with Google');
     }
   }
 
@@ -112,6 +283,7 @@ export class AuthService {
     try {
       await this.revokeSession(userId, sessionId);
     } catch (error) {
+      console.log('Logout Error', error);
       throw new UnauthorizedException('Invalid session');
     }
   }
@@ -200,6 +372,7 @@ export class AuthService {
         .srem(this.getUserSessionsKey(userId), sessionId)
         .exec();
     } catch (error) {
+      console.log('Revoke Session Error', error);
       throw new UnauthorizedException('Invalid session');
     }
   }
@@ -270,7 +443,7 @@ export class AuthService {
   private hashRefreshSecret(secret: string) {
     return createHmac(
       'sha256',
-      this.config.getOrThrow<string>('REFRESH_TOKEN_PEPPER'),
+      process.env.REFRESH_TOKEN_PEPPER || 'default_pepper',
     )
       .update(secret)
       .digest('hex');

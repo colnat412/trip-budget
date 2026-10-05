@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 
 import { HashidsModule } from 'src/common/hashids/hashids.module';
+import { MailerService } from 'src/common/mailer/mailer.service';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { HashidsModule } from 'src/common/hashids/hashids.module';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
+    MailerService,
   ],
 })
 export class AuthModule {}
