@@ -36,5 +36,20 @@ public record PlanDayResponse(
                 activities
         );
     }
-}
 
+    public static PlanDayResponse summary(PlanDayEntity entity, List<PlanActivityResponse> activities, HashidsService hashidsService) {
+        PlanDayResponse full = from(entity, activities, hashidsService);
+
+        return new PlanDayResponse(
+                full.id(),
+                full.tripId(),
+                full.dayNumber(),
+                full.planDate(),
+                full.title(),
+                full.note(),
+                full.totalEstimatedCost(),
+                full.totalActivities(),
+                List.of()
+        );
+    }
+}

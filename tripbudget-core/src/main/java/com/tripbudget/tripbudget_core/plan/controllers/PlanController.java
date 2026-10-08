@@ -11,7 +11,10 @@ import com.tripbudget.tripbudget_core.plan.dtos.response.PlanChecklistResponse;
 import com.tripbudget.tripbudget_core.plan.dtos.response.PlanDayResponse;
 import com.tripbudget.tripbudget_core.plan.dtos.response.TripPlanOverviewResponse;
 import com.tripbudget.tripbudget_core.plan.services.PlanService;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,12 +35,13 @@ public class PlanController {
     @GetMapping
     public ResponseEntity<ApiResponse<TripPlanOverviewResponse>> getTripPlanOverview(
             @PathVariable("tripId") String tripIdHash,
+            @RequestParam(defaultValue = "true") boolean includeActivities,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
         Long tripId = hashidsService.decode(tripIdHash);
 
-        TripPlanOverviewResponse response = planService.getTripPlanOverview(currentUserId, tripId);
+        TripPlanOverviewResponse response = planService.getTripPlanOverview(currentUserId, tripId, includeActivities);
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,
@@ -121,6 +125,33 @@ public class PlanController {
                 HttpStatus.OK,
                 "Day activities reset successfully",
                 null
+        ));
+    }
+
+    @GetMapping("/days/{dayId}/activities")
+    public ResponseEntity<ApiResponse<PageResponse<PlanActivityResponse>>> getDayActivities(
+            @PathVariable("tripId") String tripIdHash,
+            @PathVariable("dayId") String dayIdHash,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size,
+            @CurrentUser CurrentUserDto user
+    ) {
+        Long currentUserId = user.id();
+        Long tripId = hashidsService.decode(tripIdHash);
+        Long dayId = hashidsService.decode(dayIdHash);
+
+        PageResponse<PlanActivityResponse> response = planService.getDayActivities(
+                currentUserId,
+                tripId,
+                dayId,
+                page,
+                size
+        );
+
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK,
+                "Day activities retrieved successfully",
+                response
         ));
     }
 
@@ -301,14 +332,21 @@ public class PlanController {
     }
 
     @GetMapping("/activities/logs")
-    public ResponseEntity<ApiResponse<List<PlanActivityLogResponse>>> getActivityLogs(
+    public ResponseEntity<ApiResponse<PageResponse<PlanActivityLogResponse>>> getActivityLogs(
             @PathVariable("tripId") String tripIdHash,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @CurrentUser CurrentUserDto user
     ) {
         Long currentUserId = user.id();
         Long tripId = hashidsService.decode(tripIdHash);
 
-        List<PlanActivityLogResponse> response = planService.getActivityLogs(currentUserId, tripId);
+        PageResponse<PlanActivityLogResponse> response = planService.getActivityLogs(
+                currentUserId,
+                tripId,
+                page,
+                size
+        );
 
         return ResponseEntity.ok(ApiResponse.success(
                 HttpStatus.OK,

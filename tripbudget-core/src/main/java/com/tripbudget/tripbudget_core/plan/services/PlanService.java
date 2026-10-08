@@ -20,6 +20,7 @@ import com.tripbudget.tripbudget_core.trip.entities.TripEntity;
 import com.tripbudget.tripbudget_core.trip.entities.TripMemberEntity;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberRole;
 import com.tripbudget.tripbudget_core.trip.enums.TripMemberStatus;
+import com.tripbudget.tripbudget_core.trip.dtos.response.PageResponse;
 import com.tripbudget.tripbudget_core.trip.events.PublicTripChangedEvent;
 import com.tripbudget.tripbudget_core.trip.repositories.TripMemberRepository;
 import com.tripbudget.tripbudget_core.trip.repositories.TripRepository;
@@ -27,6 +28,9 @@ import com.tripbudget.tripbudget_core.user.entities.UserEntity;
 import com.tripbudget.tripbudget_core.user.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,8 +92,72 @@ public class PlanService {
 
     @Transactional
     public TripPlanOverviewResponse getTripPlanOverview(Long currentUserId, Long tripId) {
+        return getTripPlanOverview(currentUserId, tripId, true);
+    }
+
+    @Transactional
+    public TripPlanOverviewResponse getTripPlanOverview(Long currentUserId, Long tripId, boolean includeActivities) {
         TripEntity trip = getActiveMemberTrip(tripId, currentUserId);
-        return buildTripPlanOverview(trip);
+        return buildTripPlanOverview(trip, includeActivities);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<PlanActivityResponse> getDayActivities(
+            Long currentUserId,
+            Long tripId,
+            Long dayId,
+            int page,
+            int size
+    ) {
+        getActiveMemberTrip(tripId, currentUserId);
+
+        planDayRepository.findByIdAndTripIdAndIsDelFalse(dayId, tripId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Plan day not found"));
+
+        Page<PlanActivityEntity> activityPage = planActivityRepository
+                .findPageByDayIdSorted(dayId, PageRequest.of(page, size));
+
+        List<PlanActivityEntity> activities = activityPage.getContent();
+
+        Set<Long> expenseIds = activities.stream()
+                .map(PlanActivityEntity::getExpenseId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        Map<Long, BigDecimal> activitySpentMap = new HashMap<>();
+        for (Object[] row : expenseRepository.sumAmountByTripIdAndActivityGrouped(tripId)) {
+            Long actId = (Long) row[0];
+            BigDecimal sum = (BigDecimal) row[1];
+            if (actId != null && sum != null) {
+                activitySpentMap.put(actId, sum);
+            }
+        }
+
+        Map<Long, BigDecimal> activeExpenseAmounts = Collections.emptyMap();
+        if (!expenseIds.isEmpty()) {
+            activeExpenseAmounts = expenseRepository.findAllById(expenseIds).stream()
+                    .filter(e -> !e.isDel() && e.getStatus() != ExpenseStatus.DELETED)
+                    .collect(Collectors.toMap(ExpenseEntity::getId, ExpenseEntity::getAmount));
+        }
+
+        List<PlanActivityResponse> items = new ArrayList<>();
+        for (PlanActivityEntity act : activities) {
+            BigDecimal actualSpent = activitySpentMap.get(act.getId());
+            if (actualSpent == null && act.getExpenseId() != null) {
+                actualSpent = activeExpenseAmounts.get(act.getExpenseId());
+            }
+            items.add(PlanActivityResponse.from(act, hashidsService, actualSpent));
+        }
+
+        PageResponse.Pagination pagination = new PageResponse.Pagination(
+                activityPage.getNumber(),
+                activityPage.getSize(),
+                activityPage.getTotalElements(),
+                activityPage.getTotalPages(),
+                activityPage.hasNext()
+        );
+
+        return new PageResponse<>(items, pagination);
     }
 
     public TripPlanOverviewResponse buildPublicPlanOverview(TripEntity trip) {
@@ -136,7 +204,7 @@ public class PlanService {
         eventPublisher.publishEvent(PublicTripChangedEvent.of(tripId));
     }
 
-    private TripPlanOverviewResponse buildTripPlanOverview(TripEntity trip) {
+    private TripPlanOverviewResponse buildTripPlanOverview(TripEntity trip, boolean includeActivities) {
         Long tripId = trip.getId();
 
         List<PlanDayEntity> days = planDayRepository.findAllByTripIdAndIsDelFalseOrderByDayNumberAsc(tripId);
@@ -220,7 +288,9 @@ public class PlanService {
                 }
             }
 
-            dayResponses.add(PlanDayResponse.from(day, actResponses, hashidsService));
+            dayResponses.add(includeActivities
+                    ? PlanDayResponse.from(day, actResponses, hashidsService)
+                    : PlanDayResponse.summary(day, actResponses, hashidsService));
         }
 
         List<PlanChecklistEntity> checklists = planChecklistRepository
@@ -563,11 +633,13 @@ public class PlanService {
     }
 
     @Transactional(readOnly = true)
-    public List<PlanActivityLogResponse> getActivityLogs(Long currentUserId, Long tripId) {
+    public PageResponse<PlanActivityLogResponse> getActivityLogs(Long currentUserId, Long tripId, int page, int size) {
         getActiveMemberTrip(tripId, currentUserId);
 
-        List<PlanActivityLogEntity> logs = planActivityLogRepository
-                .findAllByTripIdAndIsDelFalseOrderByCreatedAtDesc(tripId);
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        Page<PlanActivityLogEntity> logPage = planActivityLogRepository
+                .findAllByTripIdAndIsDelFalse(tripId, PageRequest.of(page, size, sort));
+        List<PlanActivityLogEntity> logs = logPage.getContent();
 
         Set<Long> userIds = logs.stream()
                 .map(PlanActivityLogEntity::getUserId)
@@ -585,7 +657,15 @@ public class PlanService {
             responses.add(PlanActivityLogResponse.from(log, user, hashidsService));
         }
 
-        return responses;
+        PageResponse.Pagination pagination = new PageResponse.Pagination(
+                logPage.getNumber(),
+                logPage.getSize(),
+                logPage.getTotalElements(),
+                logPage.getTotalPages(),
+                logPage.hasNext()
+        );
+
+        return new PageResponse<>(responses, pagination);
     }
 
     @Transactional(readOnly = true)
